@@ -32,3 +32,6 @@ yarn-error.log*
 Thumbs.db
 .vercel
 .venv
+.dev.vars
+.wrangler
+worker-configuration.d.ts

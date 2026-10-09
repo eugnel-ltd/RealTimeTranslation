@@ -7,6 +7,8 @@ This repository contains two independent applications for real-time speech trans
 
 Both applications provide real-time speech translation capabilities but are completely independent of each other. The Python app was the initial implementation, while the web application is a more feature-rich, full-stack solution developed later.
 
+The web app deploys as a single Cloudflare Worker (`rtt`, custom domain `rtt.eugnel.com`). See [DEPLOY.md](DEPLOY.md) for secrets, vars, and smoke tests. API keys must not be placed in `VITE_*` client env vars.
+
 ## Features
 
 ### Common Features

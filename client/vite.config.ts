@@ -17,7 +17,10 @@ export default defineConfig(({ command, mode }) => {
     },
     server: {
       port: 38220,
-      host: true // Listen on all network interfaces
+      host: true,
+      proxy: {
+        '/api': 'http://127.0.0.1:8787',
+      },
     }
   };
 

@@ -1,0 +1,26 @@
+{
+  "name": "rtt",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "build": "npm --prefix client run build && npm run verify:bundle",
+    "verify:bundle": "node scripts/verify-bundle.mjs",
+    "dev:client": "npm --prefix client run dev",
+    "dev:worker": "wrangler dev",
+    "types": "wrangler types --env-interface WorkerEnv --include-runtime false",
+    "test": "vitest run",
+    "smoke": "node scripts/smoke.mjs",
+    "deploy:dry": "npm run build && wrangler deploy --dry-run"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "latest",
+    "@types/node": "^22.10.2",
+    "typescript": "^5.6.3",
+    "vitest": "^2.1.9",
+    "wrangler": "^4.45.3"
+  },
+  "dependencies": {
+    "jose": "^6.1.0"
+  }
+}
