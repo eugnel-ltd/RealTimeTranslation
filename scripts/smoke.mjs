@@ -148,7 +148,7 @@ await run('POST /api/detect-question', async () => {
   return `detector=${json.detector} shouldAnswer=${json.shouldAnswer}`;
 });
 
-async function smokeAnswer(model) {
+async function smokeAnswerRaw(model, extra = {}) {
   const start = performance.now();
   const res = await fetch(`${BASE}/api/answer`, {
     method: 'POST',
@@ -160,7 +160,8 @@ async function smokeAnswer(model) {
       question: 'What is your greatest strength?',
       conversation: 'Interviewer: What is your greatest strength?',
       userContext: 'Interviewing for a Staff engineer role on a Cloudflare Workers platform team.',
-      cvBackground: 'Backend engineer, 8 years, TypeScript and Cloudflare Workers. Led incident response for a 2h API outage.',
+      extraNotes: 'Emphasise incident response.',
+      ...extra,
     }),
   });
   if (!res.ok || !res.body) {
@@ -171,6 +172,7 @@ async function smokeAnswer(model) {
   let buf = '';
   let ttft = null;
   let tokens = '';
+  let usage = {};
   while (true) {
     const { done, value } = await reader.read();
     if (done) break;
@@ -188,15 +190,84 @@ async function smokeAnswer(model) {
           /* ignore */
         }
       }
+      if (event === 'usage' && line) {
+        try {
+          usage = JSON.parse(line.slice(6));
+        } catch {
+          /* ignore */
+        }
+      }
       if (event === 'error') throw new Error(line ?? 'stream error');
     }
   }
   if (ttft == null) throw new Error('no token events');
-  return `ttft=${ttft}ms chars=${tokens.length}`;
+  return { ttft, chars: tokens.length, usage };
 }
+
+async function smokeAnswer(model, extra = {}) {
+  const r = await smokeAnswerRaw(model, extra);
+  return `ttft=${r.ttft}ms chars=${r.chars}`;
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function syntheticProfileMarkdown(targetBytes) {
+  const line = 'Synthetic filler for prompt-cache measurement. Not a real CV. TypeScript, Workers, interviews.\n';
+  let out = '# Synthetic profile\n\n';
+  while (Buffer.byteLength(out) < targetBytes) out += line;
+  return out;
+}
+
+await run('GET /api/profiles', async () => {
+  const { res, json } = await req('/api/profiles');
+  assertOk(res, json);
+  const ids = (json.profiles ?? []).map((p) => p.id).sort().join(',');
+  if (!ids.includes('james') || !ids.includes('wing')) throw new Error(`expected james,wing got ${ids}`);
+  return ids;
+});
+
+await run('GET /api/profiles/james', async () => {
+  const { res, json } = await req('/api/profiles/james');
+  assertOk(res, json);
+  if (json.id !== 'james') throw new Error(`expected james, got ${json.id}`);
+  return `bytes=${Buffer.byteLength(json.markdown ?? '')}`;
+});
+
+await run('PUT /api/profiles/james synthetic 25KB if empty', async () => {
+  const existing = await req('/api/profiles/james');
+  assertOk(existing.res, existing.json);
+  const bytes = Buffer.byteLength(existing.json.markdown ?? '');
+  if (bytes > 0) return `kept existing bytes=${bytes}`;
+  const local = /127\.0\.0\.1|localhost/.test(BASE);
+  if (!local && process.env.SMOKE_SEED_PROFILE !== '1') {
+    return 'skipped seed (not local; set SMOKE_SEED_PROFILE=1 to write synthetic)';
+  }
+  const markdown = syntheticProfileMarkdown(25_000);
+  const { res, json } = await req('/api/profiles/james', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name: 'James', markdown }),
+  });
+  assertOk(res, json);
+  if ((json.bytes ?? 0) < 20_000) throw new Error(`expected ~25KB, got ${json.bytes}`);
+  return `seeded bytes=${json.bytes}`;
+});
 
 await run('POST /api/answer claude-opus-5-5 TTFT', () => smokeAnswer('claude-opus-5-5'));
 await run('POST /api/answer claude-sonnet-5-5 TTFT', () => smokeAnswer('claude-sonnet-5-5'));
+
+await run('POST /api/answer opus profile cache write TTFT', async () => {
+  const r = await smokeAnswerRaw('claude-opus-5-5', { profileId: 'james' });
+  return `ttft=${r.ttft}ms cache_write=${r.usage.cache_creation_input_tokens ?? 0} cache_read=${r.usage.cache_read_input_tokens ?? 0}`;
+});
+
+await run('POST /api/answer opus profile cache read TTFT', async () => {
+  await sleep(2000);
+  const r = await smokeAnswerRaw('claude-opus-5-5', { profileId: 'james' });
+  return `ttft=${r.ttft}ms cache_write=${r.usage.cache_creation_input_tokens ?? 0} cache_read=${r.usage.cache_read_input_tokens ?? 0}`;
+});
 
 const failed = results.filter((r) => !r.ok);
 console.log('\n' + JSON.stringify(results, null, 2));

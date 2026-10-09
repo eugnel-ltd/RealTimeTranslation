@@ -4,6 +4,7 @@ import { handleDetectQuestion } from './detect-question';
 import type { WorkerEnv } from './env';
 import { handleGeminiLiveProxy, handleGeminiToken } from './gemini';
 import { errorJson, json, log, logError } from './http';
+import { handleGetProfile, handleListProfiles, handlePutProfile } from './profiles';
 import { handleSpeechToken } from './speech-token';
 import { handleTranslate } from './translate';
 
@@ -59,6 +60,15 @@ async function routeApi(request: Request, env: WorkerEnv, url: URL): Promise<Res
   }
   if (pathname === '/api/answer' && method === 'POST') {
     return handleAnswer(request, env);
+  }
+  if (pathname === '/api/profiles' && method === 'GET') {
+    return handleListProfiles(env);
+  }
+  const profileMatch = pathname.match(/^\/api\/profiles\/([^/]+)$/);
+  if (profileMatch) {
+    const id = decodeURIComponent(profileMatch[1] ?? '');
+    if (method === 'GET') return handleGetProfile(env, id);
+    if (method === 'PUT') return handlePutProfile(request, env, id);
   }
   return errorJson('Not found', 404);
 }

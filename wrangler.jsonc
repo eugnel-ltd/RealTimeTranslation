@@ -23,6 +23,13 @@
     "logs": { "enabled": true, "head_sampling_rate": 1 },
     "traces": { "enabled": true, "head_sampling_rate": 0.1 }
   },
+  "kv_namespaces": [
+    {
+      "binding": "PROFILES",
+      // npx wrangler kv namespace create PROFILES — paste the printed id here. See DEPLOY.md.
+      "id": "replace-after-wrangler-kv-namespace-create"
+    }
+  ],
   "vars": {
     "AZURE_SPEECH_REGION": "uksouth",
     "AZURE_TRANSLATOR_REGION": "",

@@ -10,9 +10,19 @@ export class SettingsService {
 
   private constructor() {
     const savedSettings = localStorage.getItem(STORAGE_KEY);
-    this.currentSettings = savedSettings
-      ? { ...this.getDefaultSettings(), ...JSON.parse(savedSettings), hotkeys: { ...DEFAULT_HOTKEYS, ...(JSON.parse(savedSettings).hotkeys ?? {}) } }
-      : this.getDefaultSettings();
+    if (!savedSettings) {
+      this.currentSettings = this.getDefaultSettings();
+      return;
+    }
+    const parsed = JSON.parse(savedSettings) as Partial<UserSettings> & { cvBackground?: string };
+    const { cvBackground, ...rest } = parsed;
+    this.currentSettings = {
+      ...this.getDefaultSettings(),
+      ...rest,
+      extraNotes: parsed.extraNotes ?? cvBackground ?? '',
+      profileId: parsed.profileId === 'james' || parsed.profileId === 'wing' ? parsed.profileId : '',
+      hotkeys: { ...DEFAULT_HOTKEYS, ...(parsed.hotkeys ?? {}) },
+    };
   }
 
   public static getInstance(): SettingsService {
@@ -34,7 +44,8 @@ export class SettingsService {
       answerModel: 'claude-opus-5-5',
       answerLanguage: 'same',
       userContext: '',
-      cvBackground: '',
+      extraNotes: '',
+      profileId: '',
       questionThreshold: 0.7,
       hotkeys: { ...DEFAULT_HOTKEYS },
     };

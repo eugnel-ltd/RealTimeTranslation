@@ -1,5 +1,32 @@
 import type { WorkerEnv } from '../worker/src/env';
 
+type KvEntry = { value: string; metadata?: { name?: string } };
+
+export function mockKv(initial: Record<string, KvEntry> = {}): KVNamespace {
+  const store = new Map(Object.entries(initial));
+  return {
+    get: async (key: string) => store.get(key)?.value ?? null,
+    getWithMetadata: async (key: string) => {
+      const hit = store.get(key);
+      return { value: hit?.value ?? null, metadata: hit?.metadata ?? null, cacheStatus: null };
+    },
+    put: async (key: string, value: string, opts?: { metadata?: { name?: string } }) => {
+      store.set(key, { value, metadata: opts?.metadata });
+    },
+    list: async (opts?: { prefix?: string }) => ({
+      keys: [...store.entries()]
+        .filter(([name]) => !opts?.prefix || name.startsWith(opts.prefix))
+        .map(([name, v]) => ({ name, metadata: v.metadata })),
+      list_complete: true,
+      cacheStatus: null,
+      cursor: '',
+    }),
+    delete: async (key: string) => {
+      store.delete(key);
+    },
+  } as unknown as KVNamespace;
+}
+
 export function mockEnv(overrides: Partial<WorkerEnv> = {}): WorkerEnv {
   return {
     AZURE_SPEECH_REGION: 'eastasia',
@@ -12,6 +39,7 @@ export function mockEnv(overrides: Partial<WorkerEnv> = {}): WorkerEnv {
     GEMINI_LIVE_TRANSCRIBE_MODEL: 'gemini-3.5-transcribe-live',
     GEMINI_LIVE_TRANSLATE_MODEL: 'gemini-3.5-live-translate-preview',
     TYPESAFE_MODEL: 'jev-latest',
+    PROFILES: mockKv(),
     ASSETS: { fetch: async () => new Response('asset') } as unknown as WorkerEnv['ASSETS'],
     ...overrides,
   };

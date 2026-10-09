@@ -30,6 +30,7 @@ export type SplitLayout = 'transcript-left' | 'transcript-right' | 'transcript-t
 export type AnswerLanguage = 'same' | 'en' | 'yue' | 'zh-CN';
 export type AnswerModel = 'claude-opus-5-5' | 'claude-sonnet-5-5';
 export type AnswerWindowSeconds = 30 | 60;
+export type CandidateProfileId = '' | 'james' | 'wing';
 
 export interface QaItem {
   id: string;
@@ -49,7 +50,8 @@ export interface UserSettings {
   answerModel: AnswerModel;
   answerLanguage: AnswerLanguage;
   userContext: string;
-  cvBackground: string;
+  extraNotes: string;
+  profileId: CandidateProfileId;
   questionThreshold: number;
   hotkeys: HotkeyMap;
 }

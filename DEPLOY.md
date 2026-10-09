@@ -109,7 +109,63 @@ The script checks:
 - `GET /api/gemini-live` (expects HTTP 426 without Upgrade)
 - WebSocket `/api/gemini-live` (text `{"setupComplete":{}}`, not `[object Blob]`)
 - `POST /api/detect-question`
+- `GET /api/profiles` (seed ids `james`, `wing`)
+- `GET /api/profiles/james` (bytes only; markdown is never printed)
+- `PUT /api/profiles/james` with a **synthetic ~25KB** profile **only when that key is empty** and the smoke target is localhost (or `SMOKE_SEED_PROFILE=1`)
 - `POST /api/answer` for `claude-opus-5-5` and `claude-sonnet-5-5`, including **time-to-first-token**
+- `POST /api/answer` with `profileId=james` twice: cache **write** then cache **read** TTFT (`cache_creation_input_tokens` / `cache_read_input_tokens`)
+
+## Candidate profiles (Workers KV)
+
+This repo is **public**. Never commit CV / profile markdown. Keep files under gitignored `/profiles/` (or anywhere outside the repo) and upload them to KV.
+
+### 1. Create the namespace
+
+```bash
+npx wrangler kv namespace create PROFILES
+```
+
+Copy the printed `id` into `wrangler.jsonc`:
+
+```jsonc
+"kv_namespaces": [
+  {
+    "binding": "PROFILES",
+    "id": "<NAMESPACE_ID>"
+  }
+]
+```
+
+Then deploy so the Worker can read `env.PROFILES`. `wrangler dev` uses **local** KV by default and does not read production keys. Do not set `"remote": true` on this binding unless you intend to read/write live profiles from your laptop.
+
+### 2. Seed keys `profile:james` and `profile:wing`
+
+Value = markdown body (up to ~200KB). Metadata = display name.
+
+```bash
+# files stay local; /profiles/ is gitignored
+npx wrangler kv key put --binding=PROFILES --remote \
+  --path ./profiles/james.md profile:james \
+  --metadata '{"name":"James"}'
+
+npx wrangler kv key put --binding=PROFILES --remote \
+  --path ./profiles/wing.md profile:wing \
+  --metadata '{"name":"Wing"}'
+```
+
+Or paste / upload `.md` / `.txt` in **Settings → Candidate profile** after deploy (`PUT /api/profiles/:id`, Access-protected).
+
+### 3. APIs (all `/api/*`, Access)
+
+| Method | Path | Body / result |
+| --- | --- | --- |
+| `GET` | `/api/profiles` | `{ profiles: [{ id, name }] }` — always `james` and `wing` |
+| `GET` | `/api/profiles/:id` | `{ id, name, markdown }` |
+| `PUT` | `/api/profiles/:id` | `{ markdown, name? }` → `{ id, name, markdown, bytes }` (413 if over 200KiB) |
+
+`POST /api/answer` loads the selected profile **server-side** via `ProfileLoader` (`kvProfileLoader` today). The profile is a separate Anthropic system block with `cache_control: { type: "ephemeral" }` so a 20–30KB CV stays in the prompt cache; extra notes / role context sit **after** that block and do not bust the prefix. Swap `kvProfileLoader` for a retrieval memory (e.g. Hindsight) later without changing the client.
+
+Settings: **Candidate profile** = James / Wing / None (main source). The old CV textarea is **Extra notes (override)** in `localStorage` only.
 
 ## Translation fallback
 

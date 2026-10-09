@@ -35,3 +35,6 @@ Thumbs.db
 .dev.vars
 .wrangler
 worker-configuration.d.ts
+
+# Candidate CVs / profile markdown — never commit. Upload via wrangler kv or Settings.
+/profiles/

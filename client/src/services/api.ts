@@ -80,7 +80,8 @@ export type AnswerRequest = {
   previousQuestion?: string;
   answerLanguage: string;
   userContext: string;
-  cvBackground?: string;
+  extraNotes?: string;
+  profileId?: string;
   model: string;
   force?: boolean;
 };
@@ -124,4 +125,26 @@ export async function streamAnswer(
 
 export function fetchPublicConfig(): Promise<{ defaultAnswerModel: string; models: string[] }> {
   return apiJson('/api/config');
+}
+
+export type ProfileSummary = { id: 'james' | 'wing'; name: string };
+export type CandidateProfile = ProfileSummary & { markdown: string };
+
+export function listProfiles(): Promise<{ profiles: ProfileSummary[] }> {
+  return apiJson('/api/profiles');
+}
+
+export function getProfile(id: string): Promise<CandidateProfile> {
+  return apiJson(`/api/profiles/${encodeURIComponent(id)}`);
+}
+
+export function putProfile(
+  id: string,
+  body: { markdown: string; name?: string },
+): Promise<CandidateProfile & { bytes: number }> {
+  return apiJson(`/api/profiles/${encodeURIComponent(id)}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
 }

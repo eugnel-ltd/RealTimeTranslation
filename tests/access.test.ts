@@ -5,6 +5,8 @@ import { mockEnv } from './helpers';
 describe('access', () => {
   it('matches /api routes', () => {
     expect(isApiPath('/api/speech-token')).toBe(true);
+    expect(isApiPath('/api/profiles')).toBe(true);
+    expect(isApiPath('/api/profiles/james')).toBe(true);
     expect(isApiPath('/index.html')).toBe(false);
   });
 

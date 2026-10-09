@@ -1,12 +1,14 @@
-import React, { useState, useEffect } from 'react';
+import React, { useRef, useState, useEffect } from 'react';
 import { XMarkIcon } from '@heroicons/react/24/solid';
 import { motion, AnimatePresence } from 'framer-motion';
 import config from '../config';
+import { getProfile, listProfiles, putProfile, type ProfileSummary } from '../services/api';
 import { HOTKEY_LABELS, formatHotkey, shortcutFromEvent, type HotkeyAction } from '../hotkeys';
 import type {
   AnswerLanguage,
   AnswerModel,
   AnswerWindowSeconds,
+  CandidateProfileId,
   SpeechEngineMode,
   SplitLayout,
   UserSettings,
@@ -24,17 +26,88 @@ const getLanguageDisplayName = (lang: (typeof config.languages)[number]): string
   return `${lang.name} (${lang.nativeName})`;
 };
 
+const SEED_PROFILES: ProfileSummary[] = [
+  { id: 'james', name: 'James' },
+  { id: 'wing', name: 'Wing' },
+];
+
 const Settings: React.FC<SettingsProps> = ({ isOpen, onClose, initialSettings, onUpdate }) => {
   const [draft, setDraft] = useState<UserSettings>(initialSettings);
   const [capturing, setCapturing] = useState<HotkeyAction | null>(null);
+  const [profiles, setProfiles] = useState<ProfileSummary[]>(SEED_PROFILES);
+  const [editorName, setEditorName] = useState('');
+  const [editorMarkdown, setEditorMarkdown] = useState('');
+  const [editorDirty, setEditorDirty] = useState(false);
+  const [profileNote, setProfileNote] = useState('');
+  const fileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     setDraft(initialSettings);
   }, [initialSettings]);
 
-  const handleSave = () => {
-    onUpdate(draft);
-    onClose();
+  useEffect(() => {
+    if (!isOpen) return;
+    void listProfiles()
+      .then((data) => setProfiles(data.profiles.length ? data.profiles : SEED_PROFILES))
+      .catch(() => setProfiles(SEED_PROFILES));
+  }, [isOpen]);
+
+  useEffect(() => {
+    if (!isOpen || !draft.profileId) {
+      setEditorName('');
+      setEditorMarkdown('');
+      setEditorDirty(false);
+      return;
+    }
+    let cancelled = false;
+    const id = draft.profileId;
+    void getProfile(id)
+      .then((p) => {
+        if (cancelled) return;
+        setEditorName(p.name);
+        setEditorMarkdown(p.markdown);
+        setEditorDirty(false);
+        setProfileNote('');
+      })
+      .catch((err) => {
+        if (!cancelled) setProfileNote(err instanceof Error ? err.message : 'Failed to load profile');
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [isOpen, draft.profileId]);
+
+  const saveProfile = async () => {
+    if (!draft.profileId) return;
+    const saved = await putProfile(draft.profileId, { name: editorName, markdown: editorMarkdown });
+    setEditorDirty(false);
+    setProfileNote(`Saved ${saved.bytes} bytes to ${saved.name}`);
+    setProfiles((prev) => prev.map((p) => (p.id === saved.id ? { id: saved.id, name: saved.name } : p)));
+  };
+
+  const handleSave = async () => {
+    try {
+      if (draft.profileId && editorDirty) await saveProfile();
+      onUpdate(draft);
+      onClose();
+    } catch (err) {
+      setProfileNote(err instanceof Error ? err.message : 'Failed to save profile');
+    }
+  };
+
+  const onUpload = async (file: File) => {
+    if (!/\.(md|txt)$/i.test(file.name)) {
+      setProfileNote('Upload a .md or .txt file');
+      return;
+    }
+    const text = await file.text();
+    if (new TextEncoder().encode(text).length > 200 * 1024) {
+      setProfileNote('File exceeds 200KB');
+      return;
+    }
+    setEditorMarkdown(text);
+    setEditorDirty(true);
+    setProfileNote(`Loaded ${file.name}`);
   };
 
   const patch = (partial: Partial<UserSettings>) => setDraft((prev) => ({ ...prev, ...partial }));
@@ -206,26 +279,97 @@ const Settings: React.FC<SettingsProps> = ({ isOpen, onClose, initialSettings, o
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    Candidate profile
+                  </label>
+                  <select
+                    value={draft.profileId}
+                    onChange={(e) => patch({ profileId: e.target.value as CandidateProfileId })}
+                    className="w-full px-3 py-2 rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
+                  >
+                    <option value="">None</option>
+                    {profiles.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                {draft.profileId ? (
+                  <div className="space-y-2">
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                      Profile markdown (stored in KV, not in this repo)
+                    </label>
+                    <input
+                      value={editorName}
+                      onChange={(e) => {
+                        setEditorName(e.target.value);
+                        setEditorDirty(true);
+                      }}
+                      className="w-full px-3 py-2 rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
+                      placeholder="Display name"
+                    />
+                    <textarea
+                      value={editorMarkdown}
+                      onChange={(e) => {
+                        setEditorMarkdown(e.target.value);
+                        setEditorDirty(true);
+                      }}
+                      rows={10}
+                      className="w-full px-3 py-2 rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 font-mono text-sm"
+                      placeholder="Paste or upload CV / background markdown…"
+                    />
+                    <div className="flex flex-wrap gap-2">
+                      <input
+                        ref={fileRef}
+                        type="file"
+                        accept=".md,.txt,text/markdown,text/plain"
+                        className="hidden"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          e.target.value = '';
+                          if (file) void onUpload(file);
+                        }}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => fileRef.current?.click()}
+                        className="px-3 py-1 text-sm rounded-md bg-gray-100 dark:bg-gray-700"
+                      >
+                        Upload .md / .txt
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void saveProfile().catch((err) => setProfileNote(err instanceof Error ? err.message : 'Save failed'))}
+                        className="px-3 py-1 text-sm rounded-md bg-indigo-600 text-white"
+                      >
+                        Save profile
+                      </button>
+                    </div>
+                    {profileNote ? <p className="text-xs text-gray-500 dark:text-gray-400">{profileNote}</p> : null}
+                  </div>
+                ) : null}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                     Context about me / the role
                   </label>
                   <textarea
                     value={draft.userContext}
                     onChange={(e) => patch({ userContext: e.target.value })}
-                    rows={4}
+                    rows={3}
                     className="w-full px-3 py-2 rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
                     placeholder="Target role, constraints, what to emphasise…"
                   />
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                    CV / background
+                    Extra notes (override)
                   </label>
                   <textarea
-                    value={draft.cvBackground}
-                    onChange={(e) => patch({ cvBackground: e.target.value })}
-                    rows={10}
-                    className="w-full px-3 py-2 rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 font-mono text-sm"
-                    placeholder="Paste CV or background: roles, dates, stack, metrics…"
+                    value={draft.extraNotes}
+                    onChange={(e) => patch({ extraNotes: e.target.value })}
+                    rows={4}
+                    className="w-full px-3 py-2 rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
+                    placeholder="Session-only notes on top of the selected profile…"
                   />
                 </div>
               </fieldset>

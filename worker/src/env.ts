@@ -14,6 +14,7 @@ export interface WorkerEnv {
   ACCESS_TEAM_DOMAIN: string;
   SKIP_ACCESS_CHECK: string;
   DEFAULT_ANSWER_MODEL: string;
+  PROFILES?: KVNamespace;
   ASSETS: Fetcher;
 }
 
