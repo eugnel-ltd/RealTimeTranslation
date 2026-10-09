@@ -1,3 +1,4 @@
+import { geminiLiveSetup } from '../../../shared/geminiLive';
 import { fetchGeminiToken, translateText, type GeminiToken } from './api';
 import { arrayBufferToBase64, floatTo16BitPcm, resample } from './pcm';
 import type { TranslationConfig } from './azureSpeech';
@@ -74,8 +75,11 @@ export class GeminiSpeechService {
       ws.onerror = () => {
         if (!opened) reject(new Error('Gemini Live WebSocket failed'));
       };
-      ws.onclose = () => {
-        if (this.running) this.callbacks.onError('Gemini Live connection closed');
+      ws.onclose = (event) => {
+        if (this.running) {
+          const detail = event.reason ? `${event.code}: ${event.reason}` : String(event.code);
+          this.callbacks.onError(`Gemini Live connection closed (${detail})`);
+        }
       };
       ws.onmessage = (event) => {
         void this.handleMessage(event.data);
@@ -85,24 +89,13 @@ export class GeminiSpeechService {
 
   private setupMessage(): Record<string, unknown> {
     if (this.mode === 'translate') {
-      return {
-        model: 'models/gemini-3.5-live-translate-preview',
-        generationConfig: {
-          responseModalities: ['AUDIO'],
-          inputAudioTranscription: {},
-          outputAudioTranscription: {},
-          translationConfig: {
-            targetLanguageCode: geminiLiveTarget(this.config?.outputLanguage || 'en'),
-            echoTargetLanguage: false,
-          },
-        },
-      };
+      return geminiLiveSetup(
+        'translate',
+        'gemini-3.5-live-translate-preview',
+        this.config?.outputLanguage || 'en',
+      );
     }
-    return {
-      model: 'models/gemini-3.5-transcribe-live',
-      generationConfig: { responseModalities: ['TEXT'] },
-      inputAudioTranscription: { languageCodes: [] },
-    };
+    return geminiLiveSetup('transcribe', 'gemini-3.5-transcribe-live');
   }
 
   private async startMic() {
@@ -242,14 +235,6 @@ export class GeminiSpeechService {
 function toWsUrl(path: string): string {
   const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
   return `${proto}//${window.location.host}${path}`;
-}
-
-function geminiLiveTarget(code: string): string {
-  if (code === 'yue' || code === 'zh-HK') return 'zh-Hant';
-  if (code === 'zh-CN') return 'zh-Hans';
-  if (code === 'zh-TW') return 'zh-Hant';
-  if (code.startsWith('en')) return 'en';
-  return code.split('-')[0] || 'en';
 }
 
 async function decodeWsData(raw: unknown): Promise<string> {

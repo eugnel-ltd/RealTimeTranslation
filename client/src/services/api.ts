@@ -80,6 +80,7 @@ export type AnswerRequest = {
   previousQuestion?: string;
   answerLanguage: string;
   userContext: string;
+  cvBackground?: string;
   model: string;
   force?: boolean;
 };

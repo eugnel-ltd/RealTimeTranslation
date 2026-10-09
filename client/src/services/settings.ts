@@ -34,6 +34,7 @@ export class SettingsService {
       answerModel: 'claude-opus-5-5',
       answerLanguage: 'same',
       userContext: '',
+      cvBackground: '',
       questionThreshold: 0.7,
       hotkeys: { ...DEFAULT_HOTKEYS },
     };

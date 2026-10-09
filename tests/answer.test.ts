@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { handleAnswer, shouldSkipAnswer } from '../worker/src/answer';
+import { buildAnswerSystem, handleAnswer, shouldSkipAnswer } from '../worker/src/answer';
 import { mockEnv, mockFetch, textResponse } from './helpers';
 
 describe('answer', () => {
@@ -7,6 +7,20 @@ describe('answer', () => {
     expect(shouldSkipAnswer('What is your stack?', 'what is your  stack?', false)).toBe(true);
     expect(shouldSkipAnswer('What is your stack?', 'what is your  stack?', true)).toBe(false);
     expect(shouldSkipAnswer('Old', 'New question?', false)).toBe(false);
+  });
+
+  it('asks for a spoken STAR answer grounded in context and CV', () => {
+    const system = buildAnswerSystem({
+      knownQuestion: true,
+      userContext: 'Staff interview at a Cloudflare shop',
+      cvBackground: 'Staff engineer at Eugnel, 8 years TypeScript.',
+    });
+    expect(system).toContain('STAR');
+    expect(system).toContain('spoken-style');
+    expect(system).toContain('Staff interview at a Cloudflare shop');
+    expect(system).toContain('Staff engineer at Eugnel');
+    expect(system).toContain('[team size]');
+    expect(system).toContain('Do not refuse with hedges');
   });
 
   it('streams Anthropic text deltas as SSE tokens and reports the known question', async () => {
@@ -22,6 +36,8 @@ describe('answer', () => {
       expect(body.model).toBe('claude-sonnet-5-5');
       expect(body.stream).toBe(true);
       expect(body.output_config.effort).toBe('low');
+      expect(body.system).toContain('STAR');
+      expect(body.system).toContain('Staff engineer at Eugnel');
       return new Response(sse, { headers: { 'Content-Type': 'text/event-stream' } });
     });
     const res = await handleAnswer(
@@ -32,6 +48,8 @@ describe('answer', () => {
           model: 'claude-sonnet-5-5',
           question: 'What is your greatest strength?',
           conversation: 'What is your greatest strength?',
+          userContext: 'Interviewing for Staff',
+          cvBackground: 'Staff engineer at Eugnel',
           force: true,
         }),
       }),

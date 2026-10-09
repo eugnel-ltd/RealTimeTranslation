@@ -25,6 +25,8 @@ const GEMINI_LIVE: Record<string, string> = {
   ...TRANSLATOR,
   'zh-HK': 'zh-Hant',
   yue: 'zh-Hant',
+  'zh-Hant': 'zh-Hant',
+  'zh-Hans': 'zh-Hans',
 };
 
 export function toTranslatorCode(code: string): string {

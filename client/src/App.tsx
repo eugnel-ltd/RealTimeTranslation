@@ -192,6 +192,7 @@ const App: React.FC = () => {
             previousQuestion: lastAnsweredRef.current ?? undefined,
             answerLanguage: settings.answerLanguage,
             userContext: settings.userContext,
+            cvBackground: settings.cvBackground,
             model: settings.answerModel,
             force: opts.force,
           },
@@ -234,7 +235,7 @@ const App: React.FC = () => {
         setStreaming(false);
       }
     },
-    [conversationText, settings.answerLanguage, settings.answerModel, settings.userContext],
+    [conversationText, settings.answerLanguage, settings.answerModel, settings.userContext, settings.cvBackground],
   );
 
   useEffect(() => {

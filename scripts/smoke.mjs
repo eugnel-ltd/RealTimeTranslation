@@ -9,6 +9,10 @@
  *   SMOKE_BASE_URL  (default http://127.0.0.1:8787)
  *   SMOKE_ACCESS_JWT  Cf-Access-Jwt-Assertion if Access is on
  */
+import crypto from 'node:crypto';
+import http from 'node:http';
+import https from 'node:https';
+
 const BASE = (process.env.SMOKE_BASE_URL || 'http://127.0.0.1:8787').replace(/\/$/, '');
 const accessHeaders = process.env.SMOKE_ACCESS_JWT
   ? { 'Cf-Access-Jwt-Assertion': process.env.SMOKE_ACCESS_JWT }
@@ -113,6 +117,19 @@ await run('GET /api/gemini-live (upgrade check)', async () => {
   return '426 without websocket';
 });
 
+await run('WS /api/gemini-live setupComplete', async () => {
+  const text = await geminiLiveSetupComplete();
+  if (text === '[object Blob]') throw new Error('proxy forwarded Blob as string');
+  let json;
+  try {
+    json = JSON.parse(text);
+  } catch {
+    throw new Error(`expected JSON, got ${text.slice(0, 120)}`);
+  }
+  if (!json.setupComplete) throw new Error(`expected setupComplete, got ${text.slice(0, 200)}`);
+  return 'setupComplete';
+});
+
 await run('POST /api/detect-question', async () => {
   const { res, json } = await req('/api/detect-question', {
     method: 'POST',
@@ -142,7 +159,8 @@ async function smokeAnswer(model) {
       answerLanguage: 'en',
       question: 'What is your greatest strength?',
       conversation: 'Interviewer: What is your greatest strength?',
-      userContext: 'Backend engineer, 8 years, TypeScript and Cloudflare Workers.',
+      userContext: 'Interviewing for a Staff engineer role on a Cloudflare Workers platform team.',
+      cvBackground: 'Backend engineer, 8 years, TypeScript and Cloudflare Workers. Led incident response for a 2h API outage.',
     }),
   });
   if (!res.ok || !res.body) {
@@ -187,3 +205,132 @@ if (failed.length) {
   process.exit(1);
 }
 console.log(`\n${results.length} checks passed`);
+
+async function geminiLiveSetupComplete() {
+  const origin = new URL(BASE);
+  const isTls = origin.protocol === 'https:';
+  const key = crypto.randomBytes(16).toString('base64');
+  const setup = JSON.stringify({
+    setup: {
+      model: 'models/gemini-3.5-transcribe-live',
+      generationConfig: { responseModalities: ['TEXT'] },
+      inputAudioTranscription: { languageCodes: [] },
+    },
+  });
+
+  const socket = await new Promise((resolve, reject) => {
+    const req = (isTls ? https : http).request({
+      hostname: origin.hostname,
+      port: origin.port || (isTls ? 443 : 80),
+      path: '/api/gemini-live?mode=transcribe',
+      method: 'GET',
+      headers: {
+        Host: origin.host,
+        Connection: 'Upgrade',
+        Upgrade: 'websocket',
+        'Sec-WebSocket-Version': '13',
+        'Sec-WebSocket-Key': key,
+        ...accessHeaders,
+      },
+    });
+    const timer = setTimeout(() => {
+      req.destroy();
+      reject(new Error('websocket timeout'));
+    }, 15000);
+    req.on('upgrade', (_res, sock) => {
+      clearTimeout(timer);
+      resolve(sock);
+    });
+    req.on('response', (res) => {
+      clearTimeout(timer);
+      reject(new Error(`websocket HTTP ${res.statusCode}`));
+    });
+    req.on('error', (err) => {
+      clearTimeout(timer);
+      reject(err);
+    });
+    req.end();
+  });
+
+  try {
+    sendWsText(socket, setup);
+    return await readWsText(socket, 15000);
+  } finally {
+    socket.destroy();
+  }
+}
+
+function sendWsText(socket, text) {
+  const payload = Buffer.from(text);
+  const mask = crypto.randomBytes(4);
+  let header;
+  if (payload.length < 126) {
+    header = Buffer.alloc(6);
+    header[0] = 0x81;
+    header[1] = 0x80 | payload.length;
+    mask.copy(header, 2);
+  } else {
+    header = Buffer.alloc(8);
+    header[0] = 0x81;
+    header[1] = 0x80 | 126;
+    header.writeUInt16BE(payload.length, 2);
+    mask.copy(header, 4);
+  }
+  const masked = Buffer.from(payload);
+  for (let i = 0; i < masked.length; i++) masked[i] ^= mask[i % 4];
+  socket.write(Buffer.concat([header, masked]));
+}
+
+function readWsText(socket, timeoutMs) {
+  return new Promise((resolve, reject) => {
+    let buf = Buffer.alloc(0);
+    const timer = setTimeout(() => reject(new Error('no websocket frame')), timeoutMs);
+    socket.on('data', (chunk) => {
+      buf = Buffer.concat([buf, chunk]);
+      const frame = parseWsFrame(buf);
+      if (!frame) return;
+      clearTimeout(timer);
+      if (frame.text === '[object Blob]') {
+        reject(new Error('proxy forwarded Blob as string'));
+        return;
+      }
+      resolve(frame.text);
+    });
+    socket.on('error', (err) => {
+      clearTimeout(timer);
+      reject(err);
+    });
+    socket.on('close', () => {
+      clearTimeout(timer);
+      reject(new Error('websocket closed before setupComplete'));
+    });
+  });
+}
+
+function parseWsFrame(buf) {
+  if (buf.length < 2) return null;
+  const opcode = buf[0] & 0x0f;
+  if (opcode === 0x8) return { text: '' };
+  let len = buf[1] & 0x7f;
+  const masked = (buf[1] & 0x80) !== 0;
+  let offset = 2;
+  if (len === 126) {
+    if (buf.length < 4) return null;
+    len = buf.readUInt16BE(2);
+    offset = 4;
+  } else if (len === 127) {
+    if (buf.length < 10) return null;
+    len = Number(buf.readBigUInt64BE(2));
+    offset = 10;
+  }
+  if (masked) {
+    if (buf.length < offset + 4 + len) return null;
+    const mask = buf.subarray(offset, offset + 4);
+    offset += 4;
+    const payload = Buffer.from(buf.subarray(offset, offset + len));
+    for (let i = 0; i < payload.length; i++) payload[i] ^= mask[i % 4];
+    return { text: payload.toString('utf8') };
+  }
+  if (buf.length < offset + len) return null;
+  return { text: buf.subarray(offset, offset + len).toString('utf8') };
+}

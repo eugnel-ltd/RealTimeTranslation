@@ -1,6 +1,6 @@
+import { geminiLiveSetup, type GeminiLiveMode } from '../../shared/geminiLive';
 import type { WorkerEnv } from './env';
 import { errorJson, json, logError, readJson } from './http';
-import { toGeminiLiveCode } from './languages';
 
 const AUTH_TOKENS_URL = 'https://generativelanguage.googleapis.com/v1beta/auth_tokens';
 const LIVE_CONSTRAINED =
@@ -8,35 +8,84 @@ const LIVE_CONSTRAINED =
 const LIVE_UPSTREAM =
   'https://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent';
 
-export type GeminiMode = 'transcribe' | 'translate';
+export type GeminiMode = GeminiLiveMode;
 
 export type GeminiTokenBody = {
   mode?: GeminiMode;
   targetLanguage?: string;
 };
 
-export function geminiModels(env: WorkerEnv, mode: GeminiMode): { model: string; setupConfig: Record<string, unknown> } {
-  if (mode === 'translate') {
-    return {
-      model: env.GEMINI_LIVE_TRANSLATE_MODEL || 'gemini-3.5-live-translate-preview',
-      setupConfig: {
-        responseModalities: ['AUDIO'],
-        inputAudioTranscription: {},
-        outputAudioTranscription: {},
-        translationConfig: {
-          targetLanguageCode: 'en',
-          echoTargetLanguage: false,
-        },
-      },
-    };
+export type WsPeer = {
+  send(data: string): void;
+  close(code?: number, reason?: string): void;
+  addEventListener(type: string, listener: (event: Event) => void): void;
+};
+
+export function geminiLiveSession(
+  env: WorkerEnv,
+  mode: GeminiMode,
+  targetLanguage?: string,
+): { model: string; setup: Record<string, unknown> } {
+  const model =
+    mode === 'translate'
+      ? env.GEMINI_LIVE_TRANSLATE_MODEL || 'gemini-3.5-live-translate-preview'
+      : env.GEMINI_LIVE_TRANSCRIBE_MODEL || 'gemini-3.5-transcribe-live';
+  return { model, setup: geminiLiveSetup(mode, model, targetLanguage || 'en') };
+}
+
+export async function wsDataToText(data: unknown): Promise<string> {
+  if (typeof data === 'string') return data;
+  if (data instanceof ArrayBuffer) return new TextDecoder().decode(data);
+  if (ArrayBuffer.isView(data)) {
+    return new TextDecoder().decode(data);
   }
-  return {
-    model: env.GEMINI_LIVE_TRANSCRIBE_MODEL || 'gemini-3.5-transcribe-live',
-    setupConfig: {
-      responseModalities: ['TEXT'],
-      inputAudioTranscription: { languageCodes: [] },
-    },
+  if (typeof Blob !== 'undefined' && data instanceof Blob) return data.text();
+  if (data && typeof data === 'object' && typeof (data as Blob).text === 'function') {
+    return (data as Blob).text();
+  }
+  if (data && typeof data === 'object' && typeof (data as ArrayBufferView).buffer !== 'undefined') {
+    const view = data as ArrayBufferView;
+    return new TextDecoder().decode(view);
+  }
+  return String(data);
+}
+
+export function forwardCloseCode(code: number | undefined): number {
+  if (!code || code === 1005 || code === 1006) return 1000;
+  return code;
+}
+
+export function attachGeminiProxy(local: WsPeer, remote: WsPeer): void {
+  let closed = false;
+
+  const sendText = async (dest: WsPeer, data: unknown) => {
+    try {
+      dest.send(await wsDataToText(data));
+    } catch {
+      /* closed */
+    }
   };
+
+  const closePeer = (dest: WsPeer, event: { code?: number; reason?: string }) => {
+    if (closed) return;
+    closed = true;
+    try {
+      dest.close(forwardCloseCode(event.code), event.reason ?? '');
+    } catch {
+      /* ignore */
+    }
+  };
+
+  local.addEventListener('message', (event) => {
+    void sendText(remote, (event as MessageEvent).data);
+  });
+  remote.addEventListener('message', (event) => {
+    void sendText(local, (event as MessageEvent).data);
+  });
+  local.addEventListener('close', (event) => closePeer(remote, event as CloseEvent));
+  remote.addEventListener('close', (event) => closePeer(local, event as CloseEvent));
+  local.addEventListener('error', () => closePeer(remote, { code: 1011, reason: 'local error' }));
+  remote.addEventListener('error', () => closePeer(local, { code: 1011, reason: 'remote error' }));
 }
 
 export async function handleGeminiToken(
@@ -58,14 +107,7 @@ export async function handleGeminiToken(
     return errorJson('mode must be transcribe or translate', 400);
   }
 
-  const { model, setupConfig } = geminiModels(env, mode);
-  if (mode === 'translate') {
-    const cfg = setupConfig as {
-      translationConfig: { targetLanguageCode: string; echoTargetLanguage: boolean };
-    };
-    cfg.translationConfig.targetLanguageCode = toGeminiLiveCode(targetLanguage || 'en');
-  }
-
+  const { model, setup } = geminiLiveSession(env, mode, targetLanguage);
   const expireTime = new Date(Date.now() + 30 * 60 * 1000).toISOString();
   const newSessionExpireTime = new Date(Date.now() + 2 * 60 * 1000).toISOString();
 
@@ -79,10 +121,7 @@ export async function handleGeminiToken(
       uses: 2,
       expireTime,
       newSessionExpireTime,
-      liveConnectConstraints: {
-        model: `models/${model}`,
-        config: setupConfig,
-      },
+      bidiGenerateContentSetup: setup,
     }),
   });
 
@@ -125,36 +164,7 @@ export async function handleGeminiLiveProxy(request: Request, env: WorkerEnv): P
       return errorJson('Gemini WebSocket upgrade failed', 502);
     }
     gemini.accept();
-    server.addEventListener('message', (event) => {
-      try {
-        gemini.send(event.data);
-      } catch {
-        /* closed */
-      }
-    });
-    gemini.addEventListener('message', (event) => {
-      try {
-        server.send(event.data);
-      } catch {
-        /* closed */
-      }
-    });
-    const closeBoth = () => {
-      try {
-        server.close();
-      } catch {
-        /* ignore */
-      }
-      try {
-        gemini.close();
-      } catch {
-        /* ignore */
-      }
-    };
-    server.addEventListener('close', closeBoth);
-    gemini.addEventListener('close', closeBoth);
-    server.addEventListener('error', closeBoth);
-    gemini.addEventListener('error', closeBoth);
+    attachGeminiProxy(server, gemini);
   } catch (err) {
     logError({ message: 'gemini live proxy failed', error: err instanceof Error ? err.message : String(err) });
     server.close(1011, 'proxy failed');

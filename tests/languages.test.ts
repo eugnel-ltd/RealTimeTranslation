@@ -11,6 +11,7 @@ describe('language mapping', () => {
   it('maps Cantonese to zh-Hant for Gemini Live Translate', () => {
     expect(toGeminiLiveCode('yue')).toBe('zh-Hant');
     expect(toGeminiLiveCode('zh-HK')).toBe('zh-Hant');
+    expect(toGeminiLiveCode('zh-Hant')).toBe('zh-Hant');
   });
 
   it('uniques mapped Cantonese codes', () => {

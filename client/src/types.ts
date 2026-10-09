@@ -49,6 +49,7 @@ export interface UserSettings {
   answerModel: AnswerModel;
   answerLanguage: AnswerLanguage;
   userContext: string;
+  cvBackground: string;
   questionThreshold: number;
   hotkeys: HotkeyMap;
 }

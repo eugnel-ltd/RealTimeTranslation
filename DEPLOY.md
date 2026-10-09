@@ -8,6 +8,7 @@ Do **not** put API keys in the client. The Vite bundle is served as Worker stati
 - Custom domain: `rtt.eugnel.com` (from `wrangler.jsonc`)
 - Assets: `client/dist` (SPA)
 - API: `/api/*` runs the Worker first (`run_worker_first`)
+- `workers_dev: false` and `preview_urls: false` so no `workers.dev` / preview URL bypasses Access
 
 ## Secrets
 
@@ -56,6 +57,8 @@ npx wrangler deploy
 
 Protect `rtt.eugnel.com` with Access (Google login). The Worker verifies `Cf-Access-Jwt-Assertion` on **all** `/api/*` routes using `ACCESS_TEAM_DOMAIN` JWKS and `ACCESS_AUD`.
 
+Do not enable a `workers.dev` route or preview URLs — those hostnames would skip the Access policy on `rtt.eugnel.com`.
+
 Local development: copy `.dev.vars.example` to `.dev.vars` and set `SKIP_ACCESS_CHECK=true`.
 
 ## Build and deploy (from this repo)
@@ -97,8 +100,9 @@ The script checks:
 - `GET /api/config`
 - `GET /api/speech-token`
 - `POST /api/translate` (Azure Translator if key set, else Gemini)
-- `GET/POST /api/gemini-token`
+- `GET/POST /api/gemini-token` (ephemeral token uses `bidiGenerateContentSetup`)
 - `GET /api/gemini-live` (expects HTTP 426 without Upgrade)
+- WebSocket `/api/gemini-live` (text `{"setupComplete":{}}`, not `[object Blob]`)
 - `POST /api/detect-question`
 - `POST /api/answer` for `claude-opus-5-5` and `claude-sonnet-5-5`, including **time-to-first-token**
 

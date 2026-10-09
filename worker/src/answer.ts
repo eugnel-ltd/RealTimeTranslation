@@ -9,6 +9,7 @@ export type AnswerBody = {
   previousQuestion?: string;
   answerLanguage?: AnswerLanguage;
   userContext?: string;
+  cvBackground?: string;
   model?: string;
   force?: boolean;
 };
@@ -26,6 +27,38 @@ function languageInstruction(lang: AnswerLanguage | undefined): string {
     default:
       return 'Write the answer in the same language as the question.';
   }
+}
+
+export function buildAnswerSystem(opts: {
+  answerLanguage?: AnswerLanguage;
+  userContext?: string;
+  cvBackground?: string;
+  knownQuestion: boolean;
+}): string {
+  const context = opts.userContext?.trim() || '(none)';
+  const cv = opts.cvBackground?.trim() || '(none)';
+  const questionBit = opts.knownQuestion
+    ? 'The interview question is already extracted. Answer only that question as the candidate would. Do not repeat the question. Do not add a preamble.'
+    : [
+        'From the transcript, extract the most recent interview question asked by the other party (not the candidate).',
+        'First line MUST be exactly: <<<QUESTION>>>the question text<<<END>>>',
+        'Then write the candidate answer only. If there is no interview question, output <<<QUESTION>>><<<END>>> and nothing else.',
+      ].join(' ');
+
+  return [
+    'You are an interview copilot. Speak as the candidate in a live interview.',
+    'Give a confident, concise spoken-style answer the candidate can say aloud immediately.',
+    'Behavioural questions: STAR (Situation, Task, Action, Result) in short spoken sentences.',
+    'Other questions: 3–5 spoken key points.',
+    'Use the candidate context and CV/background below. Ground every specific claim there.',
+    'Do not invent employers, dates, titles, or metrics.',
+    'Do not refuse with hedges such as "I don\'t want to invent specifics" or "I don\'t have enough information".',
+    'If a needed fact is truly missing from context and CV, keep a usable spoken answer and mark only that fact in a brief bracket like [team size]. Never pad the answer with placeholders.',
+    languageInstruction(opts.answerLanguage),
+    `Candidate context (role / notes):\n${context}`,
+    `CV / background:\n${cv}`,
+    questionBit,
+  ].join('\n');
 }
 
 function normalizeQuestion(q: string): string {
@@ -61,21 +94,12 @@ export async function handleAnswer(
     );
   }
 
-  const system = [
-    'You are an interview copilot for a live candidate.',
-    'Be concise, specific, and honest. Do not invent employers, dates, or metrics.',
-    languageInstruction(body.answerLanguage),
-    body.userContext?.trim()
-      ? `Context about the candidate / role (may be incomplete):\n${body.userContext.trim()}`
-      : 'No extra candidate context was provided.',
-    knownQuestion
-      ? 'The interview question is already extracted. Answer only that question as the candidate would. Do not repeat the question. Do not add a preamble.'
-      : [
-          'From the transcript, extract the most recent interview question asked by the other party (not the candidate).',
-          'First line MUST be exactly: <<<QUESTION>>>the question text<<<END>>>',
-          'Then write the candidate answer only. If there is no interview question, output <<<QUESTION>>><<<END>>> and nothing else.',
-        ].join(' '),
-  ].join('\n');
+  const system = buildAnswerSystem({
+    answerLanguage: body.answerLanguage,
+    userContext: body.userContext,
+    cvBackground: body.cvBackground,
+    knownQuestion: Boolean(knownQuestion),
+  });
 
   const user = knownQuestion
     ? `Question:\n${knownQuestion}\n\nRecent transcript:\n${conversation}`
