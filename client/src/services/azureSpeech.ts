@@ -57,7 +57,7 @@ export class AzureSpeechService {
         ['en-US', 'zh-CN', 'es-ES', 'hi-IN', 'ar-SA', 'fr-FR', 'ru-RU', 'pt-BR', 'ja-JP', 'de-DE'].join(','),
       );
     } else {
-      speechConfig.speechRecognitionLanguage = config.inputLanguage;
+      speechConfig.speechRecognitionLanguage = config.inputLanguage === 'yue' ? 'zh-HK' : config.inputLanguage;
     }
     speechConfig.addTargetLanguage(config.outputLanguage);
     if (config.secondOutputLanguage) {

@@ -17,17 +17,31 @@ export async function handleTranslate(
 ): Promise<Response> {
   const body = await readJson<TranslateBody>(request);
   const text = (body.text ?? '').trim();
-  const targets = uniqueTargets(body.to ?? []).map(toTranslatorCode);
+  const requested = uniqueTargets(body.to ?? []);
+  const mapped = requested.map(toTranslatorCode);
+  const targets = uniqueTargets(mapped);
   if (!text) return errorJson('text is required', 400);
   if (targets.length === 0) return errorJson('to is required', 400);
 
+  let res: Response;
   if (env.AZURE_TRANSLATOR_KEY) {
-    return translateAzure(env, text, targets, body.from, fetchImpl);
+    res = await translateAzure(env, text, targets, body.from, fetchImpl);
+  } else if (env.GEMINI_API_KEY) {
+    res = await translateGemini(env, text, targets, body.from, fetchImpl);
+  } else {
+    return errorJson('No translation provider configured (set AZURE_TRANSLATOR_KEY or GEMINI_API_KEY)', 503);
   }
-  if (env.GEMINI_API_KEY) {
-    return translateGemini(env, text, targets, body.from, fetchImpl);
-  }
-  return errorJson('No translation provider configured (set AZURE_TRANSLATOR_KEY or GEMINI_API_KEY)', 503);
+  return alignToRequested(res, mapped, targets);
+}
+
+async function alignToRequested(res: Response, mapped: string[], unique: string[]): Promise<Response> {
+  if (!res.ok) return res;
+  const payload = (await res.json()) as { translations: string[]; provider: string };
+  const byCode = new Map(unique.map((code, i) => [code, payload.translations[i] ?? '']));
+  return json({
+    translations: mapped.map((code) => byCode.get(code) ?? ''),
+    provider: payload.provider,
+  });
 }
 
 async function translateAzure(
