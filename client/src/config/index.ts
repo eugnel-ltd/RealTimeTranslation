@@ -1,11 +1,11 @@
 /**
- * Application configuration
- * All environment variables are prefixed with VITE_ to be exposed to the client
+ * Application configuration.
+ * API calls use same-origin `/api/*` so secrets never enter this bundle.
  */
 export const config = {
   server: {
-    apiUrl: import.meta.env.VITE_API_URL || 'https://192.168.50.177:38221',
-    wsUrl: import.meta.env.VITE_WS_URL || 'wss://192.168.50.177:38221',
+    apiUrl: '',
+    wsUrl: '',
   },
   
   defaultSettings: {
@@ -33,7 +33,8 @@ export const config = {
     { code: 'ru-RU', name: 'Russian', nativeName: 'Русский' },
     { code: 'zh-CN', name: 'Simplified Chinese', nativeName: '简体中文' },
     { code: 'zh-TW', name: 'Traditional Chinese', nativeName: '繁體中文' },
-    { code: 'zh-HK', name: 'Cantonese', nativeName: '粵語' },
+    { code: 'zh-HK', name: 'Cantonese (zh-HK)', nativeName: '粵語' },
+    { code: 'yue', name: 'Cantonese', nativeName: '粵語' },
     { code: 'ja-JP', name: 'Japanese', nativeName: '日本語' },
     { code: 'ko-KR', name: 'Korean', nativeName: '한국어' },
   ] as const,

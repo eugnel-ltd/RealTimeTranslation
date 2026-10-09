@@ -7,6 +7,8 @@ This repository contains two independent applications for real-time speech trans
 
 Both applications provide real-time speech translation capabilities but are completely independent of each other. The Python app was the initial implementation, while the web application is a more feature-rich, full-stack solution developed later.
 
+The web app deploys as a single Cloudflare Worker (`rtt`, custom domain `rtt.eugnel.com`). See [DEPLOY.md](DEPLOY.md) for secrets, vars, and smoke tests. API keys must not be placed in `VITE_*` client env vars.
+
 ## Features
 
 ### Common Features
@@ -24,6 +26,9 @@ Both applications provide real-time speech translation capabilities but are comp
 - Modern, responsive web interface
 - Dark/light theme support
 - Type-safe frontend implementation
+- Session type templates (screening, AI/timed, competency, one-way AI video, meeting) from `shared/sessionTemplates.ts`
+- AI Answer: auto-detect toggle (hotkey D), typed questions (Enter / hotkey Q), generous manual question extract, optional prep + speak timers
+- Keyboard shortcuts overlay (`?`) including the new auto-detect and question-input keys
 
 ## Tech Stack
 
