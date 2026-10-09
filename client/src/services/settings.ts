@@ -1,3 +1,10 @@
+import {
+  applyTemplateDefaults,
+  getSessionTemplate,
+  isSessionTemplateId,
+  PREP_TIMER_OPTIONS,
+  QUESTION_TIMER_OPTIONS,
+} from '../../../shared/sessionTemplates';
 import config from '../config';
 import { DEFAULT_HOTKEYS } from '../hotkeys';
 import type { UserSettings } from '../types';
@@ -16,11 +23,19 @@ export class SettingsService {
     }
     const parsed = JSON.parse(savedSettings) as Partial<UserSettings> & { cvBackground?: string };
     const { cvBackground, ...rest } = parsed;
+    const sessionTemplateId = isSessionTemplateId(parsed.sessionTemplateId)
+      ? parsed.sessionTemplateId
+      : getSessionTemplate(undefined).id;
+    const tpl = getSessionTemplate(sessionTemplateId);
     this.currentSettings = {
       ...this.getDefaultSettings(),
       ...rest,
       extraNotes: parsed.extraNotes ?? cvBackground ?? '',
       profileId: parsed.profileId === 'james' || parsed.profileId === 'wing' ? parsed.profileId : '',
+      sessionTemplateId,
+      autoDetect: parsed.autoDetect !== false,
+      questionTimerSeconds: pickAllowed(parsed.questionTimerSeconds, [0, ...QUESTION_TIMER_OPTIONS], tpl.timer.enabled ? tpl.timer.defaultSeconds : 0),
+      prepTimerSeconds: pickAllowed(parsed.prepTimerSeconds, [...PREP_TIMER_OPTIONS], tpl.timer.prepDefaultSeconds),
       hotkeys: { ...DEFAULT_HOTKEYS, ...(parsed.hotkeys ?? {}) },
     };
   }
@@ -47,6 +62,8 @@ export class SettingsService {
       extraNotes: '',
       profileId: '',
       questionThreshold: 0.7,
+      ...applyTemplateDefaults(undefined),
+      autoDetect: true,
       hotkeys: { ...DEFAULT_HOTKEYS },
     };
   }
@@ -73,4 +90,8 @@ export class SettingsService {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(this.currentSettings));
     return this.getSettings();
   }
+}
+
+function pickAllowed(value: unknown, allowed: readonly number[], fallback: number): number {
+  return typeof value === 'number' && allowed.includes(value) ? value : fallback;
 }

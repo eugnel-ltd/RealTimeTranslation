@@ -2,6 +2,7 @@ import React, { useRef, useState, useEffect } from 'react';
 import { XMarkIcon } from '@heroicons/react/24/solid';
 import { motion, AnimatePresence } from 'framer-motion';
 import config from '../config';
+import { applyTemplateDefaults, getSessionTemplate } from '../../../shared/sessionTemplates';
 import { getProfile, listProfiles, putProfile, type ProfileSummary } from '../services/api';
 import { HOTKEY_LABELS, formatHotkey, shortcutFromEvent, type HotkeyAction } from '../hotkeys';
 import type {
@@ -9,10 +10,12 @@ import type {
   AnswerModel,
   AnswerWindowSeconds,
   CandidateProfileId,
+  SessionTemplateId,
   SpeechEngineMode,
   SplitLayout,
   UserSettings,
 } from '../types';
+import SessionTemplateSelect from './SessionTemplateSelect';
 
 interface SettingsProps {
   isOpen: boolean;
@@ -209,6 +212,65 @@ const Settings: React.FC<SettingsProps> = ({ isOpen, onClose, initialSettings, o
 
               <fieldset className="border border-gray-200 dark:border-gray-600 rounded-md p-3 space-y-3">
                 <legend className="px-1 text-sm font-semibold text-indigo-700 dark:text-indigo-300">AI Answer</legend>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    Session type
+                  </label>
+                  <SessionTemplateSelect
+                    value={draft.sessionTemplateId}
+                    onChange={(id: SessionTemplateId) => patch(applyTemplateDefaults(id))}
+                    className="w-full px-3 py-2 rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
+                  />
+                  <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                    {getSessionTemplate(draft.sessionTemplateId).description}
+                  </p>
+                </div>
+                <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+                  <input
+                    type="checkbox"
+                    checked={draft.autoDetect}
+                    onChange={(e) => patch({ autoDetect: e.target.checked })}
+                  />
+                  Auto-detect questions (Jev)
+                </label>
+                {getSessionTemplate(draft.sessionTemplateId).timer.enabled ? (
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                        Answer timer
+                      </label>
+                      <select
+                        value={draft.questionTimerSeconds}
+                        onChange={(e) => patch({ questionTimerSeconds: Number(e.target.value) })}
+                        className="w-full px-3 py-2 rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
+                      >
+                        {getSessionTemplate(draft.sessionTemplateId).timer.options.map((n) => (
+                          <option key={n} value={n}>
+                            {n / 60} min
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    {getSessionTemplate(draft.sessionTemplateId).timer.prepOptions.some((n) => n > 0) ? (
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                          Prep timer
+                        </label>
+                        <select
+                          value={draft.prepTimerSeconds}
+                          onChange={(e) => patch({ prepTimerSeconds: Number(e.target.value) })}
+                          className="w-full px-3 py-2 rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
+                        >
+                          {getSessionTemplate(draft.sessionTemplateId).timer.prepOptions.map((n) => (
+                            <option key={n} value={n}>
+                              {n === 0 ? 'Off' : `${n}s`}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    ) : null}
+                  </div>
+                ) : null}
                 <div>
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                     Split layout

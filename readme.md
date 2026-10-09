@@ -26,6 +26,9 @@ The web app deploys as a single Cloudflare Worker (`rtt`, custom domain `rtt.eug
 - Modern, responsive web interface
 - Dark/light theme support
 - Type-safe frontend implementation
+- Session type templates (screening, AI/timed, competency, one-way AI video, meeting) from `shared/sessionTemplates.ts`
+- AI Answer: auto-detect toggle (hotkey D), typed questions (Enter / hotkey Q), generous manual question extract, optional prep + speak timers
+- Keyboard shortcuts overlay (`?`) including the new auto-detect and question-input keys
 
 ## Tech Stack
 

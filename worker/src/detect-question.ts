@@ -15,11 +15,14 @@ export type DetectSegment = {
   timestamp?: string;
 };
 
+export type DetectMode = 'auto' | 'question-start';
+
 export type DetectQuestionBody = {
   segments?: DetectSegment[];
   windowSeconds?: number;
   lastAnsweredQuestion?: string | null;
   threshold?: number;
+  mode?: DetectMode;
 };
 
 export type DetectQuestionResult = {
@@ -74,34 +77,102 @@ export async function handleDetectQuestion(
 
   const threshold = clampThreshold(body.threshold);
   const lastAnswered = body.lastAnsweredQuestion?.trim() || '';
+  const mode: DetectMode = body.mode === 'question-start' ? 'question-start' : 'auto';
 
   if (env.TYPESAFE_API_KEY && !jevCoolingDown(now)) {
     try {
-      const result = await detectWithJev(env, segments, lastAnswered, threshold, body.windowSeconds, fetchImpl);
+      const result = await detectWithJev(env, segments, lastAnswered, threshold, body.windowSeconds, fetchImpl, mode);
       return json(result);
     } catch (err) {
       const status = err instanceof TypesafeHttpError ? err.status : 0;
       if (status === 401 || status === 403) {
         logError({ message: 'jev auth failed', status });
-        return json(await detectWithClaudeOrEmpty(env, segments, lastAnswered, 'jev_auth', fetchImpl));
+        return json(await detectStartFallbackOrClaude(env, segments, lastAnswered, 'jev_auth', fetchImpl, mode));
       }
       if (isTransientTypesafeStatus(status) || status === 0) {
         markJevCooldown(now);
         log({ message: 'jev cooldown started', status, minutes: 5 });
-        return json(await detectWithClaudeOrEmpty(env, segments, lastAnswered, 'jev_transient', fetchImpl));
+        return json(await detectStartFallbackOrClaude(env, segments, lastAnswered, 'jev_transient', fetchImpl, mode));
       }
       logError({ message: 'jev unexpected error', error: err instanceof Error ? err.message : String(err) });
-      return json(await detectWithClaudeOrEmpty(env, segments, lastAnswered, 'jev_error', fetchImpl));
+      return json(await detectStartFallbackOrClaude(env, segments, lastAnswered, 'jev_error', fetchImpl, mode));
     }
   }
 
   const reason = !env.TYPESAFE_API_KEY ? 'typesafe_unconfigured' : 'jev_cooldown';
+  if (mode === 'question-start') {
+    return json({
+      detector: 'unavailable',
+      shouldAnswer: false,
+      question: null,
+      segmentIndex: null,
+      probabilities: { newQuestionFromOtherParty: null, isInterviewQuestion: null },
+      fallbackReason: reason,
+    } satisfies DetectQuestionResult);
+  }
   return json(await detectWithClaudeOrEmpty(env, segments, lastAnswered, reason, fetchImpl));
+}
+
+async function detectStartFallbackOrClaude(
+  env: WorkerEnv,
+  segments: DetectSegment[],
+  lastAnswered: string,
+  fallbackReason: string,
+  fetchImpl: typeof fetch,
+  mode: DetectMode,
+): Promise<DetectQuestionResult> {
+  if (mode === 'question-start') {
+    return {
+      detector: 'unavailable',
+      shouldAnswer: false,
+      question: null,
+      segmentIndex: null,
+      probabilities: { newQuestionFromOtherParty: null, isInterviewQuestion: null },
+      fallbackReason,
+    };
+  }
+  return detectWithClaudeOrEmpty(env, segments, lastAnswered, fallbackReason, fetchImpl);
 }
 
 function clampThreshold(value: number | undefined): number {
   if (typeof value !== 'number' || Number.isNaN(value)) return 0.7;
   return Math.min(0.95, Math.max(0.5, value));
+}
+
+export function buildJevStartPayload(
+  segments: DetectSegment[],
+  lastAnswered: string,
+  windowSeconds: number | undefined,
+  model: string,
+): { state: unknown; model: string; questions: Record<string, SystemOneQuestion> } {
+  const capped = segments.slice(-30);
+  const criteria: Record<string, string | null> = { none: 'No interviewer question in this window.' };
+  for (const seg of capped) {
+    criteria[String(seg.index)] = seg.text.slice(0, 500);
+  }
+  return {
+    model,
+    state: {
+      setting:
+        'Live conversation. Find where the CURRENT interviewer question turn STARTS, including preamble and multi-part setup. Prefer the earliest segment that is still part of this question. Do not pick a later sub-part if earlier context belongs to the same question.',
+      window_seconds: windowSeconds ?? 120,
+      segments: capped.map((s) => ({
+        index: String(s.index),
+        timestamp: s.timestamp ?? '',
+        text: s.text,
+      })),
+      latest_segment_index: String(capped[capped.length - 1]?.index ?? 0),
+      already_answered_question: lastAnswered || null,
+    },
+    questions: {
+      question_start_segment: {
+        type: 'choice',
+        instructions:
+          'Which `segments[i].text` is the START of the current interviewer question turn (preamble + all sub-parts)? Choose none if there is no interviewer question. Prefer earlier over later when both are part of the same question. Never pick a midpoint that would truncate the opening.',
+        criteria,
+      },
+    },
+  };
 }
 
 export function buildJevPayload(
@@ -166,7 +237,22 @@ async function detectWithJev(
   threshold: number,
   windowSeconds: number | undefined,
   fetchImpl: typeof fetch,
+  mode: DetectMode = 'auto',
 ): Promise<DetectQuestionResult> {
+  if (mode === 'question-start') {
+    const payload = buildJevStartPayload(segments, lastAnswered, windowSeconds, env.TYPESAFE_MODEL || 'jev-latest');
+    const response = await evaluateSystemOne(env.TYPESAFE_API_KEY as string, payload, fetchImpl);
+    const choice = response.answers.question_start_segment as ChoiceAnswer | undefined;
+    const selected = choice?.choice ?? 'none';
+    const parsed = selected === 'none' ? NaN : Number(selected);
+    return {
+      detector: 'jev',
+      shouldAnswer: false,
+      question: null,
+      segmentIndex: Number.isFinite(parsed) ? parsed : null,
+      probabilities: { newQuestionFromOtherParty: null, isInterviewQuestion: null },
+    };
+  }
   const payload = buildJevPayload(segments, lastAnswered, windowSeconds, env.TYPESAFE_MODEL || 'jev-latest');
   const response = await evaluateSystemOne(env.TYPESAFE_API_KEY as string, payload, fetchImpl);
   const newQ = response.answers.new_question_from_other_party as NoulAnswer | undefined;

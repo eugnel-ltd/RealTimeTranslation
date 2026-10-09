@@ -55,6 +55,7 @@ export type DetectQuestionPayload = {
   windowSeconds: number;
   lastAnsweredQuestion: string | null;
   threshold: number;
+  mode?: 'auto' | 'question-start';
 };
 
 export type DetectQuestionResult = {
@@ -84,6 +85,9 @@ export type AnswerRequest = {
   profileId?: string;
   model: string;
   force?: boolean;
+  templateId?: string;
+  extractQuestion?: boolean;
+  questionTimeLimitSeconds?: number;
 };
 
 export async function streamAnswer(
@@ -123,7 +127,11 @@ export async function streamAnswer(
   }
 }
 
-export function fetchPublicConfig(): Promise<{ defaultAnswerModel: string; models: string[] }> {
+export function fetchPublicConfig(): Promise<{
+  defaultAnswerModel: string;
+  models: string[];
+  templates?: Array<{ id: string; label: string }>;
+}> {
   return apiJson('/api/config');
 }
 

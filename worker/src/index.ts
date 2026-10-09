@@ -1,5 +1,6 @@
 import { requireAccess, isApiPath } from './access';
 import { handleAnswer } from './answer';
+import { SESSION_TEMPLATES } from '../../shared/sessionTemplates';
 import { handleDetectQuestion } from './detect-question';
 import type { WorkerEnv } from './env';
 import { handleGeminiLiveProxy, handleGeminiToken } from './gemini';
@@ -41,6 +42,7 @@ async function routeApi(request: Request, env: WorkerEnv, url: URL): Promise<Res
     return json({
       defaultAnswerModel: env.DEFAULT_ANSWER_MODEL || 'claude-opus-5-5',
       models: ['claude-opus-5-5', 'claude-sonnet-5-5'],
+      templates: SESSION_TEMPLATES.map((t) => ({ id: t.id, label: t.label })),
     });
   }
   if (pathname === '/api/speech-token' && method === 'GET') {

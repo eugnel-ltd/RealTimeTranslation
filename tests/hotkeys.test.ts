@@ -36,6 +36,13 @@ describe('hotkeys', () => {
     expect(eventMatchesHotkey(fakeEvent({ code: 'KeyR', ctrlKey: true }), DEFAULT_HOTKEYS.toggleRecording)).toBe(false);
   });
 
+  it('defaults auto-detect and question-input shortcuts', () => {
+    expect(DEFAULT_HOTKEYS.toggleAutoDetect).toBe('KeyD');
+    expect(DEFAULT_HOTKEYS.focusQuestionInput).toBe('KeyQ');
+    expect(eventMatchesHotkey(fakeEvent({ code: 'KeyD' }), DEFAULT_HOTKEYS.toggleAutoDetect)).toBe(true);
+    expect(eventMatchesHotkey(fakeEvent({ code: 'KeyQ' }), DEFAULT_HOTKEYS.focusQuestionInput)).toBe(true);
+  });
+
   it('matches ? via Shift+Slash', () => {
     expect(eventMatchesHotkey(fakeEvent({ code: 'Slash', shiftKey: true, key: '?' }), DEFAULT_HOTKEYS.showHelp)).toBe(
       true,

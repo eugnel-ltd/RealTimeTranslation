@@ -1,3 +1,4 @@
+import type { SessionTemplateId } from '../../shared/sessionTemplates';
 import type { HotkeyMap } from './hotkeys';
 
 export interface TranscriptEntry {
@@ -53,7 +54,13 @@ export interface UserSettings {
   extraNotes: string;
   profileId: CandidateProfileId;
   questionThreshold: number;
+  sessionTemplateId: SessionTemplateId;
+  autoDetect: boolean;
+  questionTimerSeconds: number;
+  prepTimerSeconds: number;
   hotkeys: HotkeyMap;
 }
+
+export type { SessionTemplateId };
 
 export type { HotkeyMap };

@@ -1,3 +1,4 @@
+import { getSessionTemplate, isSessionTemplateId } from '../../shared/sessionTemplates';
 import type { WorkerEnv } from './env';
 import { errorJson, logError, readJson } from './http';
 import { isProfileId, kvProfileLoader, type ProfileLoader } from './profiles';
@@ -15,6 +16,9 @@ export type AnswerBody = {
   profileId?: string;
   model?: string;
   force?: boolean;
+  templateId?: string;
+  extractQuestion?: boolean;
+  questionTimeLimitSeconds?: number;
 };
 
 export type SystemBlock = {
@@ -45,26 +49,28 @@ export function buildAnswerSystemBlocks(opts: {
   profileName?: string;
   profileMarkdown?: string;
   knownQuestion: boolean;
+  templateId?: string;
+  extractQuestion?: boolean;
+  questionTimeLimitSeconds?: number;
 }): SystemBlock[] {
-  const questionBit = opts.knownQuestion
-    ? 'The interview question is already extracted. Answer only that question as the candidate would. Do not repeat the question. Do not add a preamble.'
-    : [
-        'From the transcript, extract the most recent interview question asked by the other party (not the candidate).',
-        'First line MUST be exactly: <<<QUESTION>>>the question text<<<END>>>',
-        'Then write the candidate answer only. If there is no interview question, output <<<QUESTION>>><<<END>>> and nothing else.',
-      ].join(' ');
+  const template = getSessionTemplate(opts.templateId);
+  const extract = Boolean(opts.extractQuestion) && !opts.knownQuestion;
+  const questionBit = opts.knownQuestion ? template.prompt.extractKnown : template.prompt.extractUnknown;
+  const timeLimit = opts.questionTimeLimitSeconds && opts.questionTimeLimitSeconds > 0
+    ? `The candidate has about ${opts.questionTimeLimitSeconds} seconds to speak this answer. Fit the spoken answer in that time.`
+    : '';
 
   const staticText = [
-    'You are an interview copilot. Speak as the candidate in a live interview.',
-    'Give a confident, concise spoken-style answer the candidate can say aloud immediately.',
-    'Behavioural questions: STAR (Situation, Task, Action, Result) in short spoken sentences.',
-    'Other questions: 3–5 spoken key points.',
-    'Use the candidate profile and notes below. Ground every specific claim there.',
-    'Do not invent employers, dates, titles, or metrics.',
-    'Do not refuse with hedges such as "I don\'t want to invent specifics" or "I don\'t have enough information".',
-    'If a needed fact is truly missing from the profile and notes, keep a usable spoken answer and mark only that fact in a brief bracket like [team size]. Never pad the answer with placeholders.',
+    template.prompt.role,
+    template.prompt.answerShape,
+    timeLimit,
     languageInstruction(opts.answerLanguage),
-  ].join('\n');
+    extract
+      ? 'When extracting, never truncate the question: keep preamble, context, and all sub-parts.'
+      : '',
+  ]
+    .filter(Boolean)
+    .join('\n');
 
   const blocks: SystemBlock[] = [{ type: 'text', text: staticText }];
   const profile = opts.profileMarkdown?.trim();
@@ -116,7 +122,13 @@ export async function handleAnswer(
     ? body.model
     : env.DEFAULT_ANSWER_MODEL || 'claude-opus-5-5';
 
+  const templateId = isSessionTemplateId(body.templateId) ? body.templateId : undefined;
+  const template = getSessionTemplate(templateId);
   const knownQuestion = (body.question ?? '').trim();
+  const extractQuestion = Boolean(body.extractQuestion) && !knownQuestion;
+  const timeLimit = typeof body.questionTimeLimitSeconds === 'number' && body.questionTimeLimitSeconds > 0
+    ? Math.min(600, Math.round(body.questionTimeLimitSeconds))
+    : undefined;
   if (shouldSkipAnswer(body.previousQuestion, knownQuestion || undefined, Boolean(body.force))) {
     return sseResponse(
       encodeSse('skip', { reason: 'no_new_question' }) + encodeSse('done', {}),
@@ -132,11 +144,14 @@ export async function handleAnswer(
     profileName: profile?.name,
     profileMarkdown: profile?.markdown,
     knownQuestion: Boolean(knownQuestion),
+    templateId: template.id,
+    extractQuestion,
+    questionTimeLimitSeconds: timeLimit,
   });
 
   const user = knownQuestion
-    ? `Question:\n${knownQuestion}\n\nRecent transcript:\n${conversation}`
-    : `Recent transcript:\n${conversation}`;
+    ? `Question:\n${knownQuestion}\n\nRecent transcript:\n${conversation || '(none)'}`
+    : `Recent transcript (include the full latest question; never truncate):\n${conversation}`;
 
   const res = await fetchImpl('https://api.anthropic.com/v1/messages', {
     method: 'POST',
@@ -148,7 +163,7 @@ export async function handleAnswer(
     },
     body: JSON.stringify({
       model,
-      max_tokens: 1024,
+      max_tokens: template.maxTokens,
       stream: true,
       output_config: { effort: 'low' },
       system,
@@ -162,7 +177,7 @@ export async function handleAnswer(
     return errorJson('Anthropic request failed', 502, { status: res.status });
   }
 
-  return sseResponse(relayAnthropicStream(res.body, knownQuestion));
+  return sseResponse(relayAnthropicStream(res.body, knownQuestion, extractQuestion));
 }
 
 function sseResponse(body: ReadableStream<Uint8Array> | string): Response {
@@ -178,7 +193,11 @@ export function encodeSse(event: string, data: unknown): string {
   return `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
 }
 
-function relayAnthropicStream(body: ReadableStream<Uint8Array>, knownQuestion: string): ReadableStream<Uint8Array> {
+function relayAnthropicStream(
+  body: ReadableStream<Uint8Array>,
+  knownQuestion: string,
+  extractQuestion: boolean,
+): ReadableStream<Uint8Array> {
   const encoder = new TextEncoder();
   const decoder = new TextDecoder();
   let buffer = '';
@@ -238,7 +257,7 @@ function relayAnthropicStream(body: ReadableStream<Uint8Array>, knownQuestion: s
               send('question', { question });
               const rest = raw.slice(match.index! + match[0].length);
               if (rest) send('token', { text: rest });
-            } else if (raw.length > 400 && !raw.includes('<<<QUESTION>>>')) {
+            } else if (!extractQuestion && raw.length > 400 && !raw.includes('<<<QUESTION>>>')) {
               questionEmitted = true;
               send('question', { question: '' });
               send('token', { text: raw });

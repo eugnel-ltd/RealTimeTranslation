@@ -5,11 +5,18 @@ import Settings from './components/Settings';
 import History from './components/History';
 import AnswerPanel from './components/AnswerPanel';
 import ShortcutHelp from './components/ShortcutHelp';
-import { QaItem, RecordingSession, TranscriptEntry, TranscriptionRecord, UserSettings } from './types';
+import {
+  generousCutoffMs,
+  joinSegmentText,
+  segmentsAfterCutoff,
+  sliceFromQuestionStart,
+} from '../../shared/extractWindow';
+import { applyTemplateDefaults, getSessionTemplate } from '../../shared/sessionTemplates';
+import { QaItem, RecordingSession, TranscriptEntry, TranscriptionRecord, SessionTemplateId, UserSettings } from './types';
 import { ThemeProvider } from './contexts/ThemeContext';
 import { SettingsService } from './services/settings';
 import { SpeechController } from './services/speechController';
-import { fetchPublicConfig, streamAnswer } from './services/api';
+import { detectQuestion, fetchPublicConfig, streamAnswer } from './services/api';
 import { createDebouncedDetector, HttpQuestionDetector } from './detectors/httpDetector';
 import type { QuestionDetector } from './detectors/types';
 import { eventMatchesHotkey, isTypingTarget } from './hotkeys';
@@ -35,10 +42,14 @@ const App: React.FC = () => {
   const [streaming, setStreaming] = useState(false);
   const [qaHistory, setQaHistory] = useState<QaItem[]>([]);
   const [detectorNote, setDetectorNote] = useState<string>();
+  const [manualDraft, setManualDraft] = useState('');
+  const [timerRunId, setTimerRunId] = useState(0);
 
   const speechRef = useRef<SpeechController | null>(null);
   const lastAnsweredRef = useRef<string | null>(null);
+  const lastAnsweredAtRef = useRef<number | null>(null);
   const answeringRef = useRef(false);
+  const questionInputRef = useRef<HTMLTextAreaElement>(null);
   const transcriptsRef = useRef(transcripts);
   transcriptsRef.current = transcripts;
 
@@ -173,22 +184,68 @@ const App: React.FC = () => {
       .join('\n');
   }, [windowedSegments]);
 
+  const patchSettings = useCallback((partial: Partial<UserSettings>) => {
+    setSettings((prev) => {
+      const next = { ...prev, ...partial };
+      settingsService.updateSettings(partial);
+      return next;
+    });
+  }, [settingsService]);
+
   const runAnswer = useCallback(
-    async (opts: { question?: string; force: boolean }) => {
+    async (opts: { question?: string; force: boolean; source: 'auto' | 'manual-button' | 'manual-text' }) => {
       if (answeringRef.current) return;
-      const conversation = conversationText();
-      if (!conversation && !opts.question) return;
+      const template = getSessionTemplate(settings.sessionTemplateId);
+      let conversation = conversationText();
+      let question = (opts.question ?? '').trim();
+      let extractQuestion = false;
+
+      if (opts.source === 'manual-text') {
+        question = (opts.question ?? manualDraft).trim();
+        if (!question) return;
+      }
+
+      if (opts.source === 'manual-button' && !question) {
+        const now = Date.now();
+        const cutoff = generousCutoffMs(now, template.manualExtractWindowSeconds, lastAnsweredAtRef.current);
+        const numbered = transcriptsRef.current
+          .filter((t) => t.isFinal && t.original.trim())
+          .map((t, index) => ({ index, text: t.original, timestamp: t.timestamp }));
+        let segs = segmentsAfterCutoff(numbered, cutoff).map((s, index) => ({ ...s, index }));
+        try {
+          const start = await detectQuestion({
+            mode: 'question-start',
+            segments: segs,
+            windowSeconds: template.manualExtractWindowSeconds,
+            lastAnsweredQuestion: lastAnsweredRef.current,
+            threshold: settings.questionThreshold,
+          });
+          segs = sliceFromQuestionStart(segs, start.segmentIndex);
+          setDetectorNote(
+            start.detector === 'jev' && start.segmentIndex != null
+              ? `Extract window from segment ${start.segmentIndex}`
+              : 'Full extract window (Jev start unavailable)',
+          );
+        } catch {
+          setDetectorNote('Full extract window (Jev start unavailable)');
+        }
+        conversation = joinSegmentText(segs);
+        extractQuestion = true;
+      }
+
+      if (!conversation && !question) return;
       answeringRef.current = true;
       setStreaming(true);
+      setTimerRunId((n) => n + 1);
       setCurrentAnswer('');
-      if (opts.question) setCurrentQuestion(opts.question);
+      if (question) setCurrentQuestion(question);
+      else if (extractQuestion) setCurrentQuestion('');
       let assembled = '';
-      let question = opts.question ?? '';
       try {
         await streamAnswer(
           {
             conversation,
-            question: opts.question,
+            question: question || undefined,
             previousQuestion: lastAnsweredRef.current ?? undefined,
             answerLanguage: settings.answerLanguage,
             userContext: settings.userContext,
@@ -196,6 +253,9 @@ const App: React.FC = () => {
             profileId: settings.profileId || undefined,
             model: settings.answerModel,
             force: opts.force,
+            templateId: settings.sessionTemplateId,
+            extractQuestion,
+            questionTimeLimitSeconds: settings.questionTimerSeconds || undefined,
           },
           (event, data) => {
             if (event === 'skip') {
@@ -217,6 +277,8 @@ const App: React.FC = () => {
         );
         if (question && assembled.trim()) {
           lastAnsweredRef.current = question;
+          lastAnsweredAtRef.current = Date.now();
+          if (opts.source === 'manual-text') setManualDraft('');
           setQaHistory((prev) =>
             [
               {
@@ -238,17 +300,30 @@ const App: React.FC = () => {
     },
     [
       conversationText,
+      manualDraft,
       settings.answerLanguage,
       settings.answerModel,
       settings.userContext,
       settings.extraNotes,
       settings.profileId,
+      settings.sessionTemplateId,
+      settings.questionThreshold,
+      settings.questionTimerSeconds,
     ],
   );
 
+  const answerNow = useCallback(() => {
+    const typed = manualDraft.trim();
+    if (typed) {
+      void runAnswer({ question: typed, force: true, source: 'manual-text' });
+      return;
+    }
+    void runAnswer({ force: true, source: settings.autoDetect ? 'auto' : 'manual-button' });
+  }, [manualDraft, runAnswer, settings.autoDetect]);
+
   useEffect(() => {
     const finals = transcripts.filter((t) => t.isFinal);
-    if (!isRecording || finals.length === 0) return;
+    if (!settings.autoDetect || !isRecording || finals.length === 0) return;
     const latest = finals[finals.length - 1];
     if (!latest.original.trim()) return;
     let cancelled = false;
@@ -267,14 +342,14 @@ const App: React.FC = () => {
             : `Detector: ${result.detector}`,
         );
         if (result.shouldAnswer && result.question && result.question !== lastAnsweredRef.current) {
-          void runAnswer({ question: result.question, force: false });
+          void runAnswer({ question: result.question, force: false, source: 'auto' });
         }
       })
       .catch(() => undefined);
     return () => {
       cancelled = true;
     };
-  }, [transcripts, isRecording, detector, settings.answerWindowSeconds, settings.questionThreshold, windowedSegments, runAnswer]);
+  }, [transcripts, isRecording, detector, settings.answerWindowSeconds, settings.questionThreshold, settings.autoDetect, windowedSegments, runAnswer]);
 
   const handleToggleRecording = async () => {
     if (!speechRef.current) return;
@@ -354,7 +429,13 @@ const App: React.FC = () => {
         void handleToggleRecording();
       } else if (eventMatchesHotkey(event, hk.answerNow)) {
         event.preventDefault();
-        void runAnswer({ force: true });
+        answerNow();
+      } else if (eventMatchesHotkey(event, hk.toggleAutoDetect)) {
+        event.preventDefault();
+        patchSettings({ autoDetect: !settings.autoDetect });
+      } else if (eventMatchesHotkey(event, hk.focusQuestionInput)) {
+        event.preventDefault();
+        questionInputRef.current?.focus();
       } else if (eventMatchesHotkey(event, hk.clear)) {
         event.preventDefault();
         if (activeTab !== 'history') handleClearTranscripts();
@@ -396,6 +477,8 @@ const App: React.FC = () => {
           onOpenSettings={() => setIsSettingsOpen(true)}
           activeTab={activeTab}
           onTabChange={setActiveTab}
+          sessionTemplateId={settings.sessionTemplateId}
+          onSessionTemplate={(id: SessionTemplateId) => patchSettings(applyTemplateDefaults(id))}
         />
 
         <main className="container mx-auto px-4 py-8">
@@ -422,8 +505,23 @@ const App: React.FC = () => {
                   streaming={streaming}
                   history={qaHistory}
                   detectorNote={detectorNote}
-                  onAnswerNow={() => void runAnswer({ force: true })}
+                  onAnswerNow={answerNow}
                   onCopy={() => void copyLatest()}
+                  autoDetect={settings.autoDetect}
+                  onToggleAutoDetect={() => patchSettings({ autoDetect: !settings.autoDetect })}
+                  manualDraft={manualDraft}
+                  onManualDraft={setManualDraft}
+                  onManualSubmit={() => {
+                    const typed = manualDraft.trim();
+                    if (typed) void runAnswer({ question: typed, force: true, source: 'manual-text' });
+                  }}
+                  questionInputRef={questionInputRef}
+                  sessionTemplateId={settings.sessionTemplateId}
+                  questionTimerSeconds={settings.questionTimerSeconds}
+                  prepTimerSeconds={settings.prepTimerSeconds}
+                  onQuestionTimerSeconds={(n) => patchSettings({ questionTimerSeconds: n })}
+                  onPrepTimerSeconds={(n) => patchSettings({ prepTimerSeconds: n })}
+                  timerRunId={timerRunId}
                 />
               </div>
             </div>

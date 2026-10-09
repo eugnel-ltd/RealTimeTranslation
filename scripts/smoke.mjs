@@ -161,6 +161,7 @@ async function smokeAnswerRaw(model, extra = {}) {
       conversation: 'Interviewer: What is your greatest strength?',
       userContext: 'Interviewing for a Staff engineer role on a Cloudflare Workers platform team.',
       extraNotes: 'Emphasise incident response.',
+      templateId: 'interview-competency',
       ...extra,
     }),
   });

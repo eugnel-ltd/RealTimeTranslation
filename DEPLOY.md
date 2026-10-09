@@ -108,7 +108,8 @@ The script checks:
 - `GET/POST /api/gemini-token` (ephemeral token uses `bidiGenerateContentSetup`)
 - `GET /api/gemini-live` (expects HTTP 426 without Upgrade)
 - WebSocket `/api/gemini-live` (text `{"setupComplete":{}}`, not `[object Blob]`)
-- `POST /api/detect-question`
+- `POST /api/detect-question` (and `mode: "question-start"` for manual extract)
+- `GET /api/config` includes `templates`
 - `GET /api/profiles` (seed ids `james`, `wing`)
 - `GET /api/profiles/james` (bytes only; markdown is never printed)
 - `PUT /api/profiles/james` with a **synthetic ~25KB** profile **only when that key is empty** and the smoke target is localhost (or `SMOKE_SEED_PROFILE=1`)
@@ -177,3 +178,19 @@ Settings: **Candidate profile** = James / Wing / None (main source). The old CV 
 Default: TypeSafe **Jev** (`POST /v1/systemone`) with parallel Noul + Choice questions (see `worker/src/detect-question.ts`). Threshold is in Settings (default `0.7`).
 
 If `TYPESAFE_API_KEY` is missing, or Jev returns 429/5xx/529, the Worker cools down Jev for **5 minutes** and falls back to Claude. The client `QuestionDetector` interface is the plug point for a later external service.
+
+Manual **Answer now** with auto-detect off posts `mode: "question-start"` so Jev can point at where the current question *starts* (preamble included). If Jev is unavailable, the client sends the full generous window (90–120s, or back to the previous answer, capped at 3 minutes) and Claude extracts. Extraction must include preamble and all sub-parts (never truncate).
+
+## Session templates
+
+Presets live in `shared/sessionTemplates.ts` (add an entry there to ship a new type). The main bar and Settings expose the same dropdown; the id is stored in `localStorage` and sent as `templateId` on `POST /api/answer`.
+
+| Id | Behaviour |
+| --- | --- |
+| `interview-screening` | ~30 min screening; short conversational answers |
+| `interview-ai-timed` | Optional 1/2/3 min speak countdown; answers sized to the clock |
+| `interview-competency` | Default. STAR / key points (previous AI Answer behaviour) |
+| `interview-oneway-video` | HireVue / Sapia / Willo / Spark Hire: 30s prep + 3:00 record, 250–330 word STAR, keyword bullets, prominent on-screen question box |
+| `meeting` | Not an interview: summary, suggested reply, action items. Auto-detect off by default |
+
+**Auto-detect** is a visible On/Off switch on the AI Answer panel (hotkey `D`) and can change mid-session. Type a question in the panel (Enter submits, Shift+Enter newline, hotkey `Q` focuses). One-way AI video makes that box prominent because questions are often on-screen text.

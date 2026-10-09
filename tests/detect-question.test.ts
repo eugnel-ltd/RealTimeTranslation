@@ -1,5 +1,10 @@
 import { describe, expect, it, beforeEach } from 'vitest';
-import { handleDetectQuestion, resetJevCooldown, buildJevPayload } from '../worker/src/detect-question';
+import {
+  handleDetectQuestion,
+  resetJevCooldown,
+  buildJevPayload,
+  buildJevStartPayload,
+} from '../worker/src/detect-question';
 import { jsonResponse, mockEnv, mockFetch, textResponse } from './helpers';
 
 function post(body: unknown): Request {
@@ -134,5 +139,47 @@ describe('detect-question', () => {
       fallbackReason?: string;
     };
     expect(second.fallbackReason).toBe('jev_cooldown');
+  });
+
+  it('question-start mode returns a start index without auto-answering', async () => {
+    const payload = buildJevStartPayload(segments, '', 120, 'jev-latest');
+    expect(payload.questions.question_start_segment.type).toBe('choice');
+    expect(payload.questions.new_question_from_other_party).toBeUndefined();
+    const fetchImpl = mockFetch(() =>
+      jsonResponse({
+        model: 'jev-1.13.0',
+        answers: {
+          question_start_segment: {
+            type: 'choice',
+            choice: '0',
+            probabilities: { '0': 0.7, '1': 0.2, none: 0.1 },
+            confidence: 0.7,
+          },
+        },
+      }),
+    );
+    const res = await handleDetectQuestion(
+      post({ segments, mode: 'question-start', windowSeconds: 120 }),
+      mockEnv({ TYPESAFE_API_KEY: 'ts' }),
+      fetchImpl,
+    );
+    expect(await res.json()).toMatchObject({
+      detector: 'jev',
+      shouldAnswer: false,
+      segmentIndex: 0,
+      question: null,
+    });
+  });
+
+  it('question-start falls back to a full window when Jev is missing', async () => {
+    const res = await handleDetectQuestion(
+      post({ segments, mode: 'question-start' }),
+      mockEnv({ TYPESAFE_API_KEY: undefined }),
+      mockFetch(() => textResponse('should not call claude', 500)),
+    );
+    const body = (await res.json()) as { segmentIndex: number | null; fallbackReason?: string; shouldAnswer: boolean };
+    expect(body.shouldAnswer).toBe(false);
+    expect(body.segmentIndex).toBeNull();
+    expect(body.fallbackReason).toBe('typesafe_unconfigured');
   });
 });

@@ -6,7 +6,7 @@ export type TranscriptSegment = {
 
 export type QuestionDetectorInput = {
   segments: TranscriptSegment[];
-  windowSeconds: 30 | 60;
+  windowSeconds: number;
   lastAnsweredQuestion: string | null;
   threshold: number;
 };

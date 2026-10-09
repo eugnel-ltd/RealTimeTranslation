@@ -7,7 +7,9 @@ export type HotkeyAction =
   | 'tabHistory'
   | 'toggleLayout'
   | 'copyAnswer'
-  | 'showHelp';
+  | 'showHelp'
+  | 'toggleAutoDetect'
+  | 'focusQuestionInput';
 
 export type HotkeyMap = Record<HotkeyAction, string>;
 
@@ -21,6 +23,8 @@ export const DEFAULT_HOTKEYS: HotkeyMap = {
   toggleLayout: 'KeyL',
   copyAnswer: 'KeyY',
   showHelp: 'Shift+Slash',
+  toggleAutoDetect: 'KeyD',
+  focusQuestionInput: 'KeyQ',
 };
 
 export const HOTKEY_LABELS: Record<HotkeyAction, string> = {
@@ -33,6 +37,8 @@ export const HOTKEY_LABELS: Record<HotkeyAction, string> = {
   toggleLayout: 'Toggle split layout',
   copyAnswer: 'Copy latest answer',
   showHelp: 'Shortcut help',
+  toggleAutoDetect: 'Toggle auto-detect',
+  focusQuestionInput: 'Focus question input',
 };
 
 type Parsed = {

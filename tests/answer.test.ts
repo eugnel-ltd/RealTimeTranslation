@@ -29,6 +29,40 @@ describe('answer', () => {
     expect(blocks.at(-1)?.cache_control).toBeUndefined();
   });
 
+  it('shapes prompts per session template', () => {
+    const screening = buildAnswerSystemBlocks({ knownQuestion: true, templateId: 'interview-screening' })
+      .map((b) => b.text)
+      .join('\n');
+    expect(screening).toContain('screening');
+    expect(screening).toContain('20–45 seconds');
+
+    const timed = buildAnswerSystemBlocks({
+      knownQuestion: true,
+      templateId: 'interview-ai-timed',
+      questionTimeLimitSeconds: 60,
+    })
+      .map((b) => b.text)
+      .join('\n');
+    expect(timed).toContain('60 seconds');
+    expect(timed).toContain('timed');
+
+    const oneway = buildAnswerSystemBlocks({ knownQuestion: true, templateId: 'interview-oneway-video' })
+      .map((b) => b.text)
+      .join('\n');
+    expect(oneway).toContain('HireVue');
+    expect(oneway).toContain('250–330');
+    expect(oneway).toContain('keyword bullets');
+    expect(oneway).toContain('STAR');
+
+    const meeting = buildAnswerSystemBlocks({ knownQuestion: false, extractQuestion: true, templateId: 'meeting' })
+      .map((b) => b.text)
+      .join('\n');
+    expect(meeting).toContain('meeting copilot');
+    expect(meeting).not.toContain('Speak as the candidate in a live interview');
+    expect(meeting).toContain('Never truncate');
+    expect(meeting).toContain('Action items');
+  });
+
   it('omits the cached profile block when markdown is empty', () => {
     const blocks = buildAnswerSystemBlocks({ knownQuestion: true, profileMarkdown: '  ' });
     expect(blocks.some((b) => b.cache_control)).toBe(false);
@@ -137,6 +171,63 @@ describe('answer', () => {
           question: 'Hello?',
           conversation: 'Hello?',
           cvBackground: 'Legacy note',
+          force: true,
+        }),
+      }),
+      mockEnv({ ANTHROPIC_API_KEY: 'sk' }),
+      fetchImpl,
+    );
+    expect(res.ok).toBe(true);
+  });
+
+  it('buffers a long extracted question instead of truncating at 400 chars', async () => {
+    const sse = [
+      'event: content_block_delta',
+      `data: ${JSON.stringify({ type: 'content_block_delta', delta: { type: 'text_delta', text: `${'x'.repeat(500)}<<<QUESTION>>>Preamble then part A and part B?<<<END>>>I would start with the outage.` } })}`,
+      '',
+      '',
+    ].join('\n');
+    const fetchImpl = mockFetch(() => new Response(sse, { headers: { 'Content-Type': 'text/event-stream' } }));
+    const res = await handleAnswer(
+      new Request('https://rtt.eugnel.com/api/answer', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          conversation: 'Context. Then the real multi-part question.',
+          extractQuestion: true,
+          force: true,
+          templateId: 'interview-competency',
+        }),
+      }),
+      mockEnv({ ANTHROPIC_API_KEY: 'sk' }),
+      fetchImpl,
+    );
+    const text = await res.text();
+    expect(text).toContain('Preamble then part A and part B?');
+    expect(text).toContain('I would start with the outage.');
+  });
+
+  it('uses a larger max_tokens for one-way video', async () => {
+    const sse = [
+      'event: content_block_delta',
+      'data: {"type":"content_block_delta","delta":{"type":"text_delta","text":"ok"}}',
+      '',
+      '',
+    ].join('\n');
+    const fetchImpl = mockFetch((_url, init) => {
+      const body = JSON.parse(String(init?.body));
+      expect(body.max_tokens).toBe(2048);
+      expect(body.system[0].text).toContain('HireVue');
+      return new Response(sse, { headers: { 'Content-Type': 'text/event-stream' } });
+    });
+    const res = await handleAnswer(
+      new Request('https://rtt.eugnel.com/api/answer', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          question: 'Tell me about yourself.',
+          conversation: 'Tell me about yourself.',
+          templateId: 'interview-oneway-video',
           force: true,
         }),
       }),
