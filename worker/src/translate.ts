@@ -108,7 +108,7 @@ async function translateGemini(
         systemInstruction: {
           parts: [
             {
-              text: 'You are a professional interpreter. Return JSON only. No commentary. For yue/zh-HK write Hong Kong Cantonese in Traditional Chinese characters, not Mandarin and not Simplified Chinese.',
+              text: 'You are a professional interpreter. Return JSON only. No commentary. For yue/zh-HK write colloquial spoken Hong Kong Cantonese (口語粵語) in Traditional Chinese characters, using particles such as 嘅/咗/唔 — not formal written Chinese (書面語), not Mandarin, and not Simplified Chinese.',
             },
           ],
         },

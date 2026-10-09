@@ -19,6 +19,9 @@ npx wrangler secret put AZURE_SPEECH_KEY
 npx wrangler secret put GEMINI_API_KEY
 npx wrangler secret put ANTHROPIC_API_KEY
 npx wrangler secret put TYPESAFE_API_KEY
+# From the Cloudflare Zero Trust Access application named "RTT" (AUD / Application Audience).
+# Prefer a secret so it is not in wrangler.jsonc. A plaintext var of the same name also works.
+npx wrangler secret put ACCESS_AUD
 # Optional — only if you add a Translator resource later. The Speech key cannot be reused.
 npx wrangler secret put AZURE_TRANSLATOR_KEY
 ```
@@ -29,17 +32,17 @@ npx wrangler secret put AZURE_TRANSLATOR_KEY
 | `GEMINI_API_KEY` | Gemini Live ephemeral tokens, Live proxy, and text translation when Translator is unset |
 | `ANTHROPIC_API_KEY` | `POST /api/answer` and Jev fallback question detection |
 | `TYPESAFE_API_KEY` | Default question detector (`POST /api/detect-question` → Jev `POST https://api.typesafe.ai/v1/systemone`) |
+| `ACCESS_AUD` | Access JWT audience from the **RTT** Access app. Required in production (`SKIP_ACCESS_CHECK=false`); missing/empty → `500 ACCESS_AUD not configured` on `/api/*` |
 | `AZURE_TRANSLATOR_KEY` | Optional. If set, `POST /api/translate` uses Azure Translator; otherwise Gemini `gemini-3.5-flash-lite` |
 
 ## Vars (`wrangler.jsonc` or dashboard)
 
 | Var | Default / notes |
 | --- | --- |
-| `AZURE_SPEECH_REGION` | Azure Speech region (e.g. `eastasia`) |
+| `AZURE_SPEECH_REGION` | `uksouth` |
 | `AZURE_TRANSLATOR_REGION` | Required only with `AZURE_TRANSLATOR_KEY` |
-| `ACCESS_AUD` | Cloudflare Access application AUD |
 | `ACCESS_TEAM_DOMAIN` | `https://eugnel.cloudflareaccess.com` |
-| `SKIP_ACCESS_CHECK` | `false` in production. `true` for local `wrangler dev` |
+| `SKIP_ACCESS_CHECK` | `false` in production (and in `wrangler.jsonc`). `true` only in local `.dev.vars` |
 | `DEFAULT_ANSWER_MODEL` | `claude-opus-5-5` (`claude-sonnet-5-5` also allowed) |
 | `GEMINI_TRANSLATE_MODEL` | `gemini-3.5-flash-lite` |
 | `GEMINI_LIVE_TRANSCRIBE_MODEL` | `gemini-3.5-transcribe-live` |
@@ -56,6 +59,8 @@ npx wrangler deploy
 ## Cloudflare Access
 
 Protect `rtt.eugnel.com` with Access (Google login). The Worker verifies `Cf-Access-Jwt-Assertion` on **all** `/api/*` routes using `ACCESS_TEAM_DOMAIN` JWKS and `ACCESS_AUD`.
+
+`ACCESS_AUD` is **not** in `wrangler.jsonc`. Set it with `npx wrangler secret put ACCESS_AUD` (or a Worker var) using the Application Audience from Zero Trust → Access → Applications → **RTT**. If it is empty while `SKIP_ACCESS_CHECK` is false, `/api/*` returns **500** `{ "error": "ACCESS_AUD not configured" }` (fail closed).
 
 Do not enable a `workers.dev` route or preview URLs — those hostnames would skip the Access policy on `rtt.eugnel.com`.
 
@@ -109,7 +114,7 @@ The script checks:
 ## Translation fallback
 
 1. Azure Translator if `AZURE_TRANSLATOR_KEY` is set.
-2. Else Gemini `GEMINI_TRANSLATE_MODEL` (`gemini-3.5-flash-lite`) via `GEMINI_API_KEY`, including Cantonese (`yue` / `zh-HK`, Traditional) and the two UI target languages.
+2. Else Gemini `GEMINI_TRANSLATE_MODEL` (`gemini-3.5-flash-lite`) via `GEMINI_API_KEY`, including Cantonese (`yue` / `zh-HK`, 口語粵語 / Traditional) and the two UI target languages. Gemini Live translate to Cantonese uses the same 口語 instruction (嘅/咗/唔), not 書面語.
 
 ## Question detector
 

@@ -13,12 +13,21 @@ describe('access', () => {
     expect(denied).toBeNull();
   });
 
-  it('fails closed without ACCESS_AUD', async () => {
+  it('fails closed with 500 when ACCESS_AUD is empty', async () => {
     const denied = await requireAccess(
       new Request('https://rtt.eugnel.com/api/health'),
       mockEnv({ SKIP_ACCESS_CHECK: 'false', ACCESS_AUD: '' }),
     );
-    expect(denied?.status).toBe(403);
+    expect(denied?.status).toBe(500);
+    expect(await denied!.json()).toEqual({ error: 'ACCESS_AUD not configured' });
+  });
+
+  it('fails closed when ACCESS_AUD is only whitespace', async () => {
+    const denied = await requireAccess(
+      new Request('https://rtt.eugnel.com/api/health'),
+      mockEnv({ SKIP_ACCESS_CHECK: 'false', ACCESS_AUD: '   ' }),
+    );
+    expect(denied?.status).toBe(500);
   });
 
   it('rejects missing Access JWT', async () => {

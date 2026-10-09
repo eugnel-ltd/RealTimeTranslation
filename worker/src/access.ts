@@ -22,9 +22,9 @@ export async function requireAccess(request: Request, env: WorkerEnv): Promise<R
   if (truthy(env.SKIP_ACCESS_CHECK)) return null;
 
   const teamDomain = (env.ACCESS_TEAM_DOMAIN || 'https://eugnel.cloudflareaccess.com').replace(/\/$/, '');
-  const aud = env.ACCESS_AUD;
+  const aud = env.ACCESS_AUD?.trim();
   if (!aud) {
-    return errorJson('ACCESS_AUD is not configured', 403);
+    return errorJson('ACCESS_AUD not configured', 500);
   }
 
   const token = request.headers.get('Cf-Access-Jwt-Assertion');

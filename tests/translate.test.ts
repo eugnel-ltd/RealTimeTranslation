@@ -70,6 +70,7 @@ describe('translate', () => {
       provider: 'gemini',
     });
     expect(prompt).toContain('Hong Kong Cantonese');
+    expect(prompt).toContain('口語粵語');
     expect(prompt).toContain('Traditional Chinese');
   });
 

@@ -41,9 +41,14 @@ export function toGeminiLiveCode(code: string): string {
   return GEMINI_LIVE[code] ?? toTranslatorCode(code);
 }
 
+export function isCantoneseUiCode(code: string): boolean {
+  const n = code.trim().toLowerCase();
+  return n === 'yue' || n === 'zh-hk';
+}
+
 export function translationLabel(code: string): string {
   const mapped = toTranslatorCode(code);
-  if (mapped === 'yue') return 'Hong Kong Cantonese (Traditional Chinese / 粵語)';
+  if (mapped === 'yue') return 'colloquial spoken Hong Kong Cantonese (口語粵語, Traditional; 嘅/咗/唔)';
   if (mapped === 'zh-Hans') return 'Mandarin Simplified Chinese (普通话 / 简体)';
   if (mapped === 'zh-Hant') return 'Traditional Chinese (繁體中文)';
   if (mapped === 'en') return 'English';

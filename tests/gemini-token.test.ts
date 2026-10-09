@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { geminiLiveSetup } from '../shared/geminiLive';
+import { CANTONESE_LIVE_INSTRUCTION, geminiLiveSetup } from '../shared/geminiLive';
 import { geminiLiveSession, handleGeminiToken, handleGeminiLiveProxy } from '../worker/src/gemini';
 import { jsonResponse, mockEnv, mockFetch } from './helpers';
 
@@ -34,6 +34,7 @@ describe('gemini-token', () => {
       expect(setup.generationConfig.inputAudioTranscription).toBeUndefined();
       expect(setup.inputAudioTranscription).toEqual({});
       expect(setup.outputAudioTranscription).toEqual({});
+      expect(setup.systemInstruction.parts[0].text).toContain('口語粵語');
       return jsonResponse({ name: 'auth_tokens/tr' });
     });
     const res = await handleGeminiToken(
@@ -75,5 +76,16 @@ describe('gemini live setup shape', () => {
     const { setup } = geminiLiveSession(mockEnv(), 'translate', 'zh-HK');
     const gen = setup.generationConfig as { translationConfig: { targetLanguageCode: string } };
     expect(gen.translationConfig.targetLanguageCode).toBe('zh-Hant');
+    expect(JSON.stringify(setup.systemInstruction)).toContain('口語粵語');
+    expect(JSON.stringify(setup.systemInstruction)).toContain('嘅');
+  });
+
+  it('instructs 口語粵語 for Live translate to yue, not for zh-TW', () => {
+    const yue = geminiLiveSetup('translate', 'gemini-3.5-live-translate-preview', 'yue');
+    expect(yue.systemInstruction).toEqual({ parts: [{ text: CANTONESE_LIVE_INSTRUCTION }] });
+    const tw = geminiLiveSetup('translate', 'gemini-3.5-live-translate-preview', 'zh-TW');
+    expect(tw.systemInstruction).toBeUndefined();
+    const en = geminiLiveSetup('translate', 'gemini-3.5-live-translate-preview', 'en-US');
+    expect(en.systemInstruction).toBeUndefined();
   });
 });

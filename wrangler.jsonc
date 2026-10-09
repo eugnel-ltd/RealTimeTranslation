@@ -24,9 +24,8 @@
     "traces": { "enabled": true, "head_sampling_rate": 0.1 }
   },
   "vars": {
-    "AZURE_SPEECH_REGION": "",
+    "AZURE_SPEECH_REGION": "uksouth",
     "AZURE_TRANSLATOR_REGION": "",
-    "ACCESS_AUD": "",
     "ACCESS_TEAM_DOMAIN": "https://eugnel.cloudflareaccess.com",
     "SKIP_ACCESS_CHECK": "false",
     "DEFAULT_ANSWER_MODEL": "claude-opus-5-5",
