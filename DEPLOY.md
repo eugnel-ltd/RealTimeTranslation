@@ -175,11 +175,15 @@ Settings: **Candidate profile** = James / Wing / None (main source). The old CV 
 
 ## Question detector
 
-Default: TypeSafe **Jev** (`POST /v1/systemone`) with parallel Noul + Choice questions (see `worker/src/detect-question.ts`). Threshold is in Settings (default `0.7`).
+Default: TypeSafe **Jev** (`jev-latest`, `POST /v1/systemone`). See `worker/src/detect-question.ts`.
 
-If `TYPESAFE_API_KEY` is missing, or Jev returns 429/5xx/529, the Worker cools down Jev for **5 minutes** and falls back to Claude. The client `QuestionDetector` interface is the plug point for a later external service.
+- **(A) auto-trigger:** one Noul, “has the interviewer just finished a substantive question?”. Settings threshold default **`0.6`**. The client requires **two consecutive positives** (with new finals between) **or** one positive plus **~1s of silence** before firing, and will not re-trigger the same question.
+- **Window:** last **90–120s** of transcript, capped at **~300 words**.
+- **(B) question start:** Choice over numbered segments `[1]…[N]`. Take the **earliest** segment whose **cumulative probability from segment 1 is ≥ 0.3** (not argmax). Used for manual Answer now and for auto-trigger extraction.
 
-Manual **Answer now** with auto-detect off posts `mode: "question-start"` so Jev can point at where the current question *starts* (preamble included). If Jev is unavailable, the client sends the full generous window (90–120s, or back to the previous answer, capped at 3 minutes) and Claude extracts. Extraction must include preamble and all sub-parts (never truncate).
+If `TYPESAFE_API_KEY` is missing, or Jev returns 429/5xx/529, the Worker cools down Jev for **5 minutes** and falls back to Claude for auto-detect (A). The client `QuestionDetector` interface is the plug point for a later external service.
+
+Manual **Answer now** posts `mode: "question-start"` so Jev can point at where the current question *starts* (preamble included). If Jev is unavailable, the client sends the full generous window (90–120s, or back to the previous answer, capped at 3 minutes) and Claude extracts. Extraction must include preamble and all sub-parts (never truncate).
 
 ## Session templates
 

@@ -20,8 +20,8 @@ export type SessionTemplate = {
   shortLabel: string;
   kind: SessionKind;
   description: string;
-  /** Auto-detect (Jev) window; existing 30/60 setting still overrides in Settings. */
-  defaultAnswerWindowSeconds: 30 | 60;
+  /** Auto-detect (Jev) window; Settings 90/120 overrides. */
+  defaultAnswerWindowSeconds: 90 | 120;
   /** Generous window for manual Answer now extraction. */
   manualExtractWindowSeconds: number;
   questionLabel: string;
@@ -68,7 +68,7 @@ export const SESSION_TEMPLATES: SessionTemplate[] = [
     shortLabel: 'Screening',
     kind: 'interview',
     description: 'About 30 minutes. Conversational, concise spoken answers.',
-    defaultAnswerWindowSeconds: 60,
+    defaultAnswerWindowSeconds: 120,
     manualExtractWindowSeconds: 120,
     questionLabel: 'Question',
     emptyQuestion: 'Waiting for an interview question…',
@@ -97,7 +97,7 @@ export const SESSION_TEMPLATES: SessionTemplate[] = [
     shortLabel: 'AI / timed',
     kind: 'interview',
     description: 'Each question may have a 1–3 minute limit. Keep answers speakable within the timer.',
-    defaultAnswerWindowSeconds: 60,
+    defaultAnswerWindowSeconds: 120,
     manualExtractWindowSeconds: 120,
     questionLabel: 'Question',
     emptyQuestion: 'Waiting for an interview question…',
@@ -126,7 +126,7 @@ export const SESSION_TEMPLATES: SessionTemplate[] = [
     shortLabel: 'Competency',
     kind: 'interview',
     description: 'Behavioural and competency questions. STAR spoken answers.',
-    defaultAnswerWindowSeconds: 60,
+    defaultAnswerWindowSeconds: 120,
     manualExtractWindowSeconds: 120,
     questionLabel: 'Question',
     emptyQuestion: 'Waiting for an interview question…',
@@ -155,7 +155,7 @@ export const SESSION_TEMPLATES: SessionTemplate[] = [
     kind: 'interview',
     description:
       'HireVue / Sapia / Willo / Spark Hire style: on-screen question, ~30s prep, up to 3 min recording, one take, no follow-ups.',
-    defaultAnswerWindowSeconds: 60,
+    defaultAnswerWindowSeconds: 120,
     manualExtractWindowSeconds: 120,
     questionLabel: 'Question',
     emptyQuestion: 'Paste or type the on-screen question…',
@@ -194,7 +194,7 @@ export const SESSION_TEMPLATES: SessionTemplate[] = [
     shortLabel: 'Meeting',
     kind: 'meeting',
     description: 'Not an interview. Summary, suggested reply or points to raise, and action items.',
-    defaultAnswerWindowSeconds: 60,
+    defaultAnswerWindowSeconds: 120,
     manualExtractWindowSeconds: 90,
     questionLabel: 'Latest discussion',
     emptyQuestion: 'Waiting for discussion…',

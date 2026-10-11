@@ -30,7 +30,7 @@ export type SpeechEngineMode = 'auto' | 'azure' | 'gemini-translator' | 'gemini-
 export type SplitLayout = 'transcript-left' | 'transcript-right' | 'transcript-top' | 'transcript-bottom';
 export type AnswerLanguage = 'same' | 'en' | 'yue' | 'zh-CN';
 export type AnswerModel = 'claude-opus-5-5' | 'claude-sonnet-5-5';
-export type AnswerWindowSeconds = 30 | 60;
+export type AnswerWindowSeconds = 90 | 120;
 export type CandidateProfileId = '' | 'james' | 'wing';
 
 export interface QaItem {

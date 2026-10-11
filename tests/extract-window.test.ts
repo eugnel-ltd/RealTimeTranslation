@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { generousCutoffMs, joinSegmentText, segmentsAfterCutoff, sliceFromQuestionStart } from '../shared/extractWindow';
+import {
+  capFromEndByWords,
+  coerceDetectWindowSeconds,
+  generousCutoffMs,
+  joinSegmentText,
+  segmentsAfterCutoff,
+  sliceFromQuestionStart,
+  wordCount,
+} from '../shared/extractWindow';
 import { pinStateOnScroll, scrollTopForAnswer } from '../client/src/scrollPin';
 
 describe('extract window', () => {
@@ -25,6 +33,25 @@ describe('extract window', () => {
   it('keeps segments without timestamps', () => {
     const segs = [{ index: 0, text: 'Hello' }];
     expect(segmentsAfterCutoff(segs, Date.now()).length).toBe(1);
+  });
+
+  it('caps the detect window from the end at ~300 words', () => {
+    const pad = Array.from({ length: 20 }, (_, i) => ({
+      index: i,
+      text: Array.from({ length: 20 }, () => 'word').join(' '),
+    }));
+    const tail = { index: 20, text: 'tell me about a production incident you owned last year' };
+    const capped = capFromEndByWords([...pad, tail], 300);
+    expect(wordCount(joinSegmentText(capped))).toBeLessThanOrEqual(300);
+    expect(capped.at(-1)?.text).toContain('production incident');
+    expect(capped[0].index).toBeGreaterThan(0);
+  });
+
+  it('maps legacy 30/60 windows onto 90/120', () => {
+    expect(coerceDetectWindowSeconds(90)).toBe(90);
+    expect(coerceDetectWindowSeconds(120)).toBe(120);
+    expect(coerceDetectWindowSeconds(30)).toBe(90);
+    expect(coerceDetectWindowSeconds(60)).toBe(120);
   });
 });
 

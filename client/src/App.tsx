@@ -6,11 +6,14 @@ import History from './components/History';
 import AnswerPanel from './components/AnswerPanel';
 import ShortcutHelp from './components/ShortcutHelp';
 import {
+  capFromEndByWords,
+  DETECT_MAX_WORDS,
   generousCutoffMs,
   joinSegmentText,
   segmentsAfterCutoff,
   sliceFromQuestionStart,
 } from '../../shared/extractWindow';
+import { confirmSilence, createDetectGateState, nextDetectGate } from './detectors/detectGate';
 import { applyTemplateDefaults, getSessionTemplate } from '../../shared/sessionTemplates';
 import { QaItem, RecordingSession, TranscriptEntry, TranscriptionRecord, SessionTemplateId, UserSettings } from './types';
 import { ThemeProvider } from './contexts/ThemeContext';
@@ -49,6 +52,9 @@ const App: React.FC = () => {
   const lastAnsweredRef = useRef<string | null>(null);
   const lastAnsweredAtRef = useRef<number | null>(null);
   const answeringRef = useRef(false);
+  const detectGateRef = useRef(createDetectGateState());
+  const silenceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pendingExtractRef = useRef<string>('');
   const questionInputRef = useRef<HTMLTextAreaElement>(null);
   const transcriptsRef = useRef(transcripts);
   transcriptsRef.current = transcripts;
@@ -172,10 +178,15 @@ const App: React.FC = () => {
 
   const windowedSegments = useCallback(() => {
     const cutoff = Date.now() - settings.answerWindowSeconds * 1000;
-    return transcriptsRef.current
+    const timed = transcriptsRef.current
       .filter((t) => t.isFinal && t.original.trim())
-      .filter((t) => new Date(t.timestamp || 0).getTime() >= cutoff)
+      .filter((t) => {
+        if (!t.timestamp) return true;
+        const ms = new Date(t.timestamp).getTime();
+        return Number.isNaN(ms) || ms >= cutoff;
+      })
       .map((t, index) => ({ index, text: t.original, timestamp: t.timestamp }));
+    return capFromEndByWords(timed, DETECT_MAX_WORDS).map((s, index) => ({ ...s, index }));
   }, [settings.answerWindowSeconds]);
 
   const conversationText = useCallback(() => {
@@ -318,38 +329,106 @@ const App: React.FC = () => {
       void runAnswer({ question: typed, force: true, source: 'manual-text' });
       return;
     }
-    void runAnswer({ force: true, source: settings.autoDetect ? 'auto' : 'manual-button' });
-  }, [manualDraft, runAnswer, settings.autoDetect]);
+    void runAnswer({ force: true, source: 'manual-button' });
+  }, [manualDraft, runAnswer]);
+
+  const clearSilenceTimer = useCallback(() => {
+    if (silenceTimerRef.current) {
+      clearTimeout(silenceTimerRef.current);
+      silenceTimerRef.current = null;
+    }
+  }, []);
+
+  const fireAutoAnswer = useCallback(
+    (question: string) => {
+      const trimmed = question.trim();
+      if (!trimmed || trimmed === lastAnsweredRef.current) return;
+      clearSilenceTimer();
+      void runAnswer({ question: trimmed, force: false, source: 'auto' });
+    },
+    [clearSilenceTimer, runAnswer],
+  );
+
+  useEffect(() => {
+    if (!settings.autoDetect || !isRecording) {
+      detectGateRef.current = createDetectGateState();
+      pendingExtractRef.current = '';
+      clearSilenceTimer();
+    }
+  }, [settings.autoDetect, isRecording, clearSilenceTimer]);
 
   useEffect(() => {
     const finals = transcripts.filter((t) => t.isFinal);
     if (!settings.autoDetect || !isRecording || finals.length === 0) return;
     const latest = finals[finals.length - 1];
     if (!latest.original.trim()) return;
+    const segs = windowedSegments();
     let cancelled = false;
     void detector
       .detect({
-        segments: windowedSegments(),
+        segments: segs,
         windowSeconds: settings.answerWindowSeconds,
         lastAnsweredQuestion: lastAnsweredRef.current,
         threshold: settings.questionThreshold,
       })
       .then((result) => {
         if (cancelled) return;
+        const extracted =
+          joinSegmentText(sliceFromQuestionStart(segs, result.segmentIndex ?? null)) || result.question || '';
+        const fingerprint =
+          result.segmentIndex != null && Number.isFinite(result.segmentIndex)
+            ? `i:${result.segmentIndex}`
+            : extracted;
         setDetectorNote(
           result.detector === 'jev'
             ? `Jev p=${result.probability?.toFixed(2) ?? '—'}`
             : `Detector: ${result.detector}`,
         );
-        if (result.shouldAnswer && result.question && result.question !== lastAnsweredRef.current) {
-          void runAnswer({ question: result.question, force: false, source: 'auto' });
+        const outcome = nextDetectGate(detectGateRef.current, {
+          positive: Boolean(result.shouldAnswer && extracted),
+          fingerprint,
+          nowMs: Date.now(),
+          finalCount: finals.length,
+          lastAnswered: lastAnsweredRef.current,
+        });
+        detectGateRef.current = outcome.state;
+        if (outcome.fire) {
+          fireAutoAnswer(extracted);
+          return;
         }
+        if (outcome.scheduleSilenceMs == null) {
+          if (!result.shouldAnswer) clearSilenceTimer();
+          return;
+        }
+        pendingExtractRef.current = extracted;
+        if (silenceTimerRef.current) return;
+        silenceTimerRef.current = setTimeout(() => {
+          silenceTimerRef.current = null;
+          const latestFinals = transcriptsRef.current.filter((t) => t.isFinal);
+          const silent = confirmSilence(detectGateRef.current, {
+            nowMs: Date.now(),
+            finalCount: latestFinals.length,
+            lastAnswered: lastAnsweredRef.current,
+          });
+          detectGateRef.current = silent.state;
+          if (silent.fire) fireAutoAnswer(pendingExtractRef.current);
+        }, outcome.scheduleSilenceMs);
       })
       .catch(() => undefined);
     return () => {
       cancelled = true;
     };
-  }, [transcripts, isRecording, detector, settings.answerWindowSeconds, settings.questionThreshold, settings.autoDetect, windowedSegments, runAnswer]);
+  }, [
+    transcripts,
+    isRecording,
+    detector,
+    settings.answerWindowSeconds,
+    settings.questionThreshold,
+    settings.autoDetect,
+    windowedSegments,
+    fireAutoAnswer,
+    clearSilenceTimer,
+  ]);
 
   const handleToggleRecording = async () => {
     if (!speechRef.current) return;

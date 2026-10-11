@@ -2,6 +2,7 @@ import React, { useRef, useState, useEffect } from 'react';
 import { XMarkIcon } from '@heroicons/react/24/solid';
 import { motion, AnimatePresence } from 'framer-motion';
 import config from '../config';
+import { coerceDetectWindowSeconds } from '../../../shared/extractWindow';
 import { applyTemplateDefaults, getSessionTemplate } from '../../../shared/sessionTemplates';
 import { getProfile, listProfiles, putProfile, type ProfileSummary } from '../services/api';
 import { HOTKEY_LABELS, formatHotkey, shortcutFromEvent, type HotkeyAction } from '../hotkeys';
@@ -288,15 +289,15 @@ const Settings: React.FC<SettingsProps> = ({ isOpen, onClose, initialSettings, o
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                    Conversation window
+                    Conversation window (Jev A, ~200–300 words)
                   </label>
                   <select
-                    value={draft.answerWindowSeconds}
+                    value={coerceDetectWindowSeconds(draft.answerWindowSeconds)}
                     onChange={(e) => patch({ answerWindowSeconds: Number(e.target.value) as AnswerWindowSeconds })}
                     className="w-full px-3 py-2 rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
                   >
-                    <option value={30}>30 seconds</option>
-                    <option value={60}>60 seconds</option>
+                    <option value={90}>90 seconds</option>
+                    <option value={120}>120 seconds</option>
                   </select>
                 </div>
                 <div>
@@ -331,7 +332,7 @@ const Settings: React.FC<SettingsProps> = ({ isOpen, onClose, initialSettings, o
                   </label>
                   <input
                     type="range"
-                    min={0.5}
+                    min={0.4}
                     max={0.95}
                     step={0.05}
                     value={draft.questionThreshold}

@@ -17,6 +17,7 @@ export class HttpQuestionDetector implements QuestionDetector {
     return {
       shouldAnswer: result.shouldAnswer,
       question: result.question,
+      segmentIndex: result.segmentIndex,
       probability,
       detector: result.detector,
       skippedReason: result.shouldAnswer ? undefined : result.fallbackReason || 'below_threshold',

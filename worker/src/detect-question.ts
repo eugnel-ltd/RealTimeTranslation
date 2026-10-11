@@ -1,3 +1,15 @@
+import {
+  capFromEndByWords,
+  CUMULATIVE_START_TAU,
+  DEFAULT_DETECT_WINDOW_SECONDS,
+  DEFAULT_QUESTION_THRESHOLD,
+  DETECT_MAX_WORDS,
+  earliestCumulativeStart,
+  joinSegmentText,
+  MAX_QUESTION_THRESHOLD,
+  MIN_QUESTION_THRESHOLD,
+  sliceFromQuestionStart,
+} from '../../shared/extractWindow';
 import type { WorkerEnv } from './env';
 import { json, log, logError, readJson } from './http';
 import {
@@ -135,8 +147,56 @@ async function detectStartFallbackOrClaude(
 }
 
 function clampThreshold(value: number | undefined): number {
-  if (typeof value !== 'number' || Number.isNaN(value)) return 0.7;
-  return Math.min(0.95, Math.max(0.5, value));
+  if (typeof value !== 'number' || Number.isNaN(value)) return DEFAULT_QUESTION_THRESHOLD;
+  return Math.min(MAX_QUESTION_THRESHOLD, Math.max(MIN_QUESTION_THRESHOLD, value));
+}
+
+const START_CHOICE_INSTRUCTIONS =
+  'At which numbered segment does the CURRENT interviewer question START? Include preamble and all sub-parts. Prefer earlier over later. Choose none if there is no interviewer question.';
+
+export function prepareDetectWindow(
+  segments: DetectSegment[],
+  windowSeconds: number | undefined,
+): {
+  capped: DetectSegment[];
+  keys: string[];
+  criteria: Record<string, string | null>;
+  indexByKey: Record<string, number>;
+  windowSeconds: number;
+  transcript: string;
+} {
+  const capped = capFromEndByWords(segments, DETECT_MAX_WORDS);
+  const keys = capped.map((_, i) => String(i + 1));
+  const criteria: Record<string, string | null> = { none: 'No interviewer question in this window.' };
+  const indexByKey: Record<string, number> = {};
+  capped.forEach((seg, i) => {
+    const key = String(i + 1);
+    criteria[key] = seg.text.slice(0, 500);
+    indexByKey[key] = seg.index;
+  });
+  return {
+    capped,
+    keys,
+    criteria,
+    indexByKey,
+    windowSeconds: windowSeconds ?? DEFAULT_DETECT_WINDOW_SECONDS,
+    transcript: capped.map((s, i) => `[${i + 1}] ${s.text}`).join('\n'),
+  };
+}
+
+function startIndexFromChoice(
+  choice: ChoiceAnswer | undefined,
+  keys: string[],
+  indexByKey: Record<string, number>,
+): number | null {
+  const key = earliestCumulativeStart(choice?.probabilities, keys, CUMULATIVE_START_TAU);
+  if (key == null) return null;
+  const index = indexByKey[key];
+  return Number.isFinite(index) ? index : null;
+}
+
+function jevModel(env: WorkerEnv): string {
+  return env.TYPESAFE_MODEL || 'jev-latest';
 }
 
 export function buildJevStartPayload(
@@ -145,31 +205,21 @@ export function buildJevStartPayload(
   windowSeconds: number | undefined,
   model: string,
 ): { state: unknown; model: string; questions: Record<string, SystemOneQuestion> } {
-  const capped = segments.slice(-30);
-  const criteria: Record<string, string | null> = { none: 'No interviewer question in this window.' };
-  for (const seg of capped) {
-    criteria[String(seg.index)] = seg.text.slice(0, 500);
-  }
+  const win = prepareDetectWindow(segments, windowSeconds);
   return {
     model,
     state: {
       setting:
         'Live conversation. Find where the CURRENT interviewer question turn STARTS, including preamble and multi-part setup. Prefer the earliest segment that is still part of this question. Do not pick a later sub-part if earlier context belongs to the same question.',
-      window_seconds: windowSeconds ?? 120,
-      segments: capped.map((s) => ({
-        index: String(s.index),
-        timestamp: s.timestamp ?? '',
-        text: s.text,
-      })),
-      latest_segment_index: String(capped[capped.length - 1]?.index ?? 0),
+      window_seconds: win.windowSeconds,
+      transcript: win.transcript,
       already_answered_question: lastAnswered || null,
     },
     questions: {
       question_start_segment: {
         type: 'choice',
-        instructions:
-          'Which `segments[i].text` is the START of the current interviewer question turn (preamble + all sub-parts)? Choose none if there is no interviewer question. Prefer earlier over later when both are part of the same question. Never pick a midpoint that would truncate the opening.',
-        criteria,
+        instructions: START_CHOICE_INSTRUCTIONS,
+        criteria: win.criteria,
       },
     },
   };
@@ -181,50 +231,31 @@ export function buildJevPayload(
   windowSeconds: number | undefined,
   model: string,
 ): { state: unknown; model: string; questions: Record<string, SystemOneQuestion> } {
-  const capped = segments.slice(-20);
-  const criteria: Record<string, string | null> = { none: 'No interviewer question the candidate should answer.' };
-  for (const seg of capped) {
-    criteria[String(seg.index)] = seg.text.slice(0, 500);
-  }
-
+  const win = prepareDetectWindow(segments, windowSeconds);
   return {
     model,
     state: {
       setting:
-        'Live job interview. The candidate is using this app. Segments are chronological speech from the room; speakers are not labelled.',
-      window_seconds: windowSeconds ?? 60,
-      segments: capped.map((s) => ({
-        index: String(s.index),
-        timestamp: s.timestamp ?? '',
-        text: s.text,
-      })),
-      latest_segment_index: String(capped[capped.length - 1]?.index ?? 0),
+        'Live job interview. Numbered lines are chronological speech from the room; speakers are not labelled. The candidate is using this app.',
+      window_seconds: win.windowSeconds,
+      transcript: win.transcript,
       already_answered_question: lastAnswered || null,
     },
     questions: {
-      new_question_from_other_party: {
+      has_substantive_question: {
         type: 'noul',
         instructions:
-          'Did the other party (the interviewer, not the candidate) ask a question in `segments` that is not the same as `already_answered_question`? If `already_answered_question` is null, treat any interviewer question as new. Candidate self-talk, clarification, or repeating the already-answered question is not a new interviewer question.',
+          'Has the interviewer just finished asking the candidate a substantive question that needs an answer? Treat already_answered_question as already handled. Incomplete or cut-off questions, greetings, logistics, small talk, candidate speech, and rhetorical questions the interviewer already answered are false.',
         criteria: {
-          true: 'A new interviewer question is present in the window.',
-          false: 'No new interviewer question (small talk, candidate speech, repeat, or incomplete utterance).',
+          true: 'The interviewer has just finished a substantive interview question the candidate should answer, and it is not already_answered_question.',
+          false:
+            'No such completed question (cut off mid-sentence, small talk, candidate speaking, repeat, statement, or already answered).',
         },
       },
-      is_interview_question: {
-        type: 'noul',
-        instructions:
-          'Is the newest question from the other party an interview question the candidate should answer (role, experience, technical, behavioural, case), rather than greeting, logistics, or acknowledgement?',
-        criteria: {
-          true: 'The candidate is expected to answer this as an interview question.',
-          false: 'Not an interview question, or there is no question.',
-        },
-      },
-      question_segment: {
+      question_start_segment: {
         type: 'choice',
-        instructions:
-          'Which `segments[i].text` contains the newest interviewer question the candidate should answer? Choose none if there is no such question. Prefer the latest complete question if several exist.',
-        criteria,
+        instructions: START_CHOICE_INSTRUCTIONS,
+        criteria: win.criteria,
       },
     },
   };
@@ -239,39 +270,37 @@ async function detectWithJev(
   fetchImpl: typeof fetch,
   mode: DetectMode = 'auto',
 ): Promise<DetectQuestionResult> {
+  const win = prepareDetectWindow(segments, windowSeconds);
+  const model = jevModel(env);
   if (mode === 'question-start') {
-    const payload = buildJevStartPayload(segments, lastAnswered, windowSeconds, env.TYPESAFE_MODEL || 'jev-latest');
+    const payload = buildJevStartPayload(segments, lastAnswered, windowSeconds, model);
     const response = await evaluateSystemOne(env.TYPESAFE_API_KEY as string, payload, fetchImpl);
     const choice = response.answers.question_start_segment as ChoiceAnswer | undefined;
-    const selected = choice?.choice ?? 'none';
-    const parsed = selected === 'none' ? NaN : Number(selected);
+    const segmentIndex = startIndexFromChoice(choice, win.keys, win.indexByKey);
     return {
       detector: 'jev',
       shouldAnswer: false,
       question: null,
-      segmentIndex: Number.isFinite(parsed) ? parsed : null,
+      segmentIndex,
       probabilities: { newQuestionFromOtherParty: null, isInterviewQuestion: null },
     };
   }
-  const payload = buildJevPayload(segments, lastAnswered, windowSeconds, env.TYPESAFE_MODEL || 'jev-latest');
+  const payload = buildJevPayload(segments, lastAnswered, windowSeconds, model);
   const response = await evaluateSystemOne(env.TYPESAFE_API_KEY as string, payload, fetchImpl);
-  const newQ = response.answers.new_question_from_other_party as NoulAnswer | undefined;
-  const interview = response.answers.is_interview_question as NoulAnswer | undefined;
-  const choice = response.answers.question_segment as ChoiceAnswer | undefined;
-  const newP = typeof newQ?.noul === 'number' ? newQ.noul : 0;
-  const interviewP = typeof interview?.noul === 'number' ? interview.noul : 0;
-  const selected = choice?.choice ?? 'none';
-  const segmentIndex = selected === 'none' ? null : Number(selected);
-  const hit = segments.find((s) => s.index === segmentIndex);
-  const shouldAnswer = newP >= threshold && interviewP >= threshold && hit != null;
+  const noul = response.answers.has_substantive_question as NoulAnswer | undefined;
+  const choice = response.answers.question_start_segment as ChoiceAnswer | undefined;
+  const p = typeof noul?.noul === 'number' ? noul.noul : 0;
+  const segmentIndex = startIndexFromChoice(choice, win.keys, win.indexByKey);
+  const shouldAnswer = p >= threshold;
+  const extracted = joinSegmentText(sliceFromQuestionStart(win.capped, segmentIndex));
   return {
     detector: 'jev',
     shouldAnswer,
-    question: shouldAnswer ? hit.text.trim() : null,
-    segmentIndex: shouldAnswer ? segmentIndex : null,
+    question: shouldAnswer ? extracted || null : null,
+    segmentIndex,
     probabilities: {
-      newQuestionFromOtherParty: newP,
-      isInterviewQuestion: interviewP,
+      newQuestionFromOtherParty: p,
+      isInterviewQuestion: p,
     },
   };
 }

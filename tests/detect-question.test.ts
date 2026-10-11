@@ -1,4 +1,5 @@
 import { describe, expect, it, beforeEach } from 'vitest';
+import { earliestCumulativeStart } from '../shared/extractWindow';
 import {
   handleDetectQuestion,
   resetJevCooldown,
@@ -20,38 +21,72 @@ const segments = [
   { index: 1, text: 'Tell me about a production incident you owned.' },
 ];
 
+const startSegments = [
+  { index: 4, text: 'great thanks for that' },
+  { index: 5, text: 'lovely stuff so moving on from that technical side' },
+  { index: 6, text: 'talk me through a time you led a migration' },
+  { index: 7, text: 'and what would you do differently' },
+];
+
+describe('earliestCumulativeStart', () => {
+  it('picks the earliest key where cumulative probability from segment 1 reaches 0.3', () => {
+    const keys = ['1', '2', '3', '4'];
+    // argmax is 3 (0.50); cum≥0.3 hits at 2 (0.20+0.25)
+    expect(
+      earliestCumulativeStart({ '1': 0.2, '2': 0.25, '3': 0.5, '4': 0.05, none: 0.0 }, keys, 0.3),
+    ).toBe('2');
+  });
+
+  it('picks the first segment when it already holds ≥0.3 (errs longer)', () => {
+    expect(earliestCumulativeStart({ '1': 0.4, '2': 0.5, '3': 0.1 }, ['1', '2', '3'], 0.3)).toBe('1');
+  });
+
+  it('returns null when mass never reaches 0.3', () => {
+    expect(earliestCumulativeStart({ '1': 0.1, '2': 0.1, none: 0.8 }, ['1', '2'], 0.3)).toBeNull();
+  });
+
+  it('ignores none and missing keys', () => {
+    expect(earliestCumulativeStart({ none: 0.9, '2': 0.4 }, ['1', '2'], 0.3)).toBe('2');
+  });
+});
+
 describe('detect-question', () => {
   beforeEach(() => resetJevCooldown());
 
-  it('asks independent Jev Noul + Choice questions over named state', () => {
-    const payload = buildJevPayload(segments, '', 60, 'jev-latest');
-    expect(payload.questions.new_question_from_other_party.type).toBe('noul');
-    expect(payload.questions.is_interview_question.type).toBe('noul');
-    const segmentQ = payload.questions.question_segment;
-    expect(segmentQ.type).toBe('choice');
-    if (segmentQ.type !== 'choice') throw new Error('expected choice');
-    expect(segmentQ.criteria['1']).toContain('production incident');
-    expect(segmentQ.criteria.none).toBeTruthy();
+  it('asks Jev A noul + B numbered choice over a 90–120s window', () => {
+    const payload = buildJevPayload(segments, '', 120, 'jev-latest');
+    expect(payload.model).toBe('jev-latest');
+    expect((payload.state as { window_seconds: number }).window_seconds).toBe(120);
+    expect((payload.state as { transcript: string }).transcript).toContain('[1]');
+    expect((payload.state as { transcript: string }).transcript).toContain('[2]');
+    expect(payload.questions.has_substantive_question.type).toBe('noul');
+    const startQ = payload.questions.question_start_segment;
+    expect(startQ.type).toBe('choice');
+    if (startQ.type !== 'choice') throw new Error('expected choice');
+    expect(startQ.criteria['1']).toContain('Thanks for coming in');
+    expect(startQ.criteria['2']).toContain('production incident');
+    expect(startQ.criteria.none).toBeTruthy();
+    expect(payload.questions.new_question_from_other_party).toBeUndefined();
+    expect(payload.questions.is_interview_question).toBeUndefined();
   });
 
-  it('triggers when both Nouls meet the threshold and a segment is selected', async () => {
+  it('triggers A when the noul meets the threshold and extracts from B cumulative start', async () => {
     const fetchImpl = mockFetch(() =>
       jsonResponse({
         model: 'jev-1.13.0',
         answers: {
-          new_question_from_other_party: { type: 'noul', noul: 0.91 },
-          is_interview_question: { type: 'noul', noul: 0.88 },
-          question_segment: {
+          has_substantive_question: { type: 'noul', noul: 0.91 },
+          question_start_segment: {
             type: 'choice',
-            choice: '1',
-            probabilities: { '0': 0.05, '1': 0.9, none: 0.05 },
+            choice: '2',
+            probabilities: { '1': 0.1, '2': 0.85, none: 0.05 },
             confidence: 0.8,
           },
         },
       }),
     );
     const res = await handleDetectQuestion(
-      post({ segments, threshold: 0.7, windowSeconds: 60 }),
+      post({ segments, threshold: 0.6, windowSeconds: 120 }),
       mockEnv({ TYPESAFE_API_KEY: 'ts' }),
       fetchImpl,
     );
@@ -64,19 +99,47 @@ describe('detect-question', () => {
     });
   });
 
+  it('uses default threshold 0.6 when omitted', async () => {
+    const fetchImpl = mockFetch(() =>
+      jsonResponse({
+        model: 'jev-1.13.0',
+        answers: {
+          has_substantive_question: { type: 'noul', noul: 0.62 },
+          question_start_segment: {
+            type: 'choice',
+            choice: '2',
+            probabilities: { '1': 0.05, '2': 0.9, none: 0.05 },
+            confidence: 0.9,
+          },
+        },
+      }),
+    );
+    const res = await handleDetectQuestion(
+      post({ segments, windowSeconds: 90 }),
+      mockEnv({ TYPESAFE_API_KEY: 'ts' }),
+      fetchImpl,
+    );
+    const body = (await res.json()) as { shouldAnswer: boolean };
+    expect(body.shouldAnswer).toBe(true);
+  });
+
   it('does not trigger below the threshold', async () => {
     const fetchImpl = mockFetch(() =>
       jsonResponse({
         model: 'jev-1.13.0',
         answers: {
-          new_question_from_other_party: { type: 'noul', noul: 0.4 },
-          is_interview_question: { type: 'noul', noul: 0.9 },
-          question_segment: { type: 'choice', choice: '1', probabilities: { '1': 1, none: 0 }, confidence: 1 },
+          has_substantive_question: { type: 'noul', noul: 0.4 },
+          question_start_segment: {
+            type: 'choice',
+            choice: '2',
+            probabilities: { '1': 0.05, '2': 0.9, none: 0.05 },
+            confidence: 1,
+          },
         },
       }),
     );
     const res = await handleDetectQuestion(
-      post({ segments, threshold: 0.7 }),
+      post({ segments, threshold: 0.6 }),
       mockEnv({ TYPESAFE_API_KEY: 'ts' }),
       fetchImpl,
     );
@@ -141,32 +204,33 @@ describe('detect-question', () => {
     expect(second.fallbackReason).toBe('jev_cooldown');
   });
 
-  it('question-start mode returns a start index without auto-answering', async () => {
-    const payload = buildJevStartPayload(segments, '', 120, 'jev-latest');
+  it('question-start uses cumulative 0.3, not argmax', async () => {
+    const payload = buildJevStartPayload(startSegments, '', 120, 'jev-latest');
     expect(payload.questions.question_start_segment.type).toBe('choice');
-    expect(payload.questions.new_question_from_other_party).toBeUndefined();
+    expect(payload.questions.has_substantive_question).toBeUndefined();
     const fetchImpl = mockFetch(() =>
       jsonResponse({
         model: 'jev-1.13.0',
         answers: {
           question_start_segment: {
             type: 'choice',
-            choice: '0',
-            probabilities: { '0': 0.7, '1': 0.2, none: 0.1 },
-            confidence: 0.7,
+            choice: '4',
+            probabilities: { '1': 0.05, '2': 0.28, '3': 0.55, '4': 0.1, none: 0.02 },
+            confidence: 0.55,
           },
         },
       }),
     );
     const res = await handleDetectQuestion(
-      post({ segments, mode: 'question-start', windowSeconds: 120 }),
+      post({ segments: startSegments, mode: 'question-start', windowSeconds: 120 }),
       mockEnv({ TYPESAFE_API_KEY: 'ts' }),
       fetchImpl,
     );
+    // cum: 0.05, 0.33 → key 2 → index 5 (preamble). argmax would be key 3 → index 6.
     expect(await res.json()).toMatchObject({
       detector: 'jev',
       shouldAnswer: false,
-      segmentIndex: 0,
+      segmentIndex: 5,
       question: null,
     });
   });

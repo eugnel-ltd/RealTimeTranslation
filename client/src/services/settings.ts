@@ -1,4 +1,8 @@
 import {
+  coerceDetectWindowSeconds,
+  DEFAULT_QUESTION_THRESHOLD,
+} from '../../../shared/extractWindow';
+import {
   applyTemplateDefaults,
   getSessionTemplate,
   isSessionTemplateId,
@@ -34,6 +38,11 @@ export class SettingsService {
       profileId: parsed.profileId === 'james' || parsed.profileId === 'wing' ? parsed.profileId : '',
       sessionTemplateId,
       autoDetect: parsed.autoDetect !== false,
+      answerWindowSeconds: coerceDetectWindowSeconds(parsed.answerWindowSeconds),
+      questionThreshold:
+        typeof parsed.questionThreshold === 'number' && Number.isFinite(parsed.questionThreshold)
+          ? parsed.questionThreshold
+          : DEFAULT_QUESTION_THRESHOLD,
       questionTimerSeconds: pickAllowed(parsed.questionTimerSeconds, [0, ...QUESTION_TIMER_OPTIONS], tpl.timer.enabled ? tpl.timer.defaultSeconds : 0),
       prepTimerSeconds: pickAllowed(parsed.prepTimerSeconds, [...PREP_TIMER_OPTIONS], tpl.timer.prepDefaultSeconds),
       hotkeys: { ...DEFAULT_HOTKEYS, ...(parsed.hotkeys ?? {}) },
@@ -55,13 +64,13 @@ export class SettingsService {
       theme: config.ui.defaultTheme as 'light' | 'dark',
       speechEngine: 'auto',
       splitLayout: 'transcript-left',
-      answerWindowSeconds: 60,
+      answerWindowSeconds: 120,
       answerModel: 'claude-opus-5-5',
       answerLanguage: 'same',
       userContext: '',
       extraNotes: '',
       profileId: '',
-      questionThreshold: 0.7,
+      questionThreshold: DEFAULT_QUESTION_THRESHOLD,
       ...applyTemplateDefaults(undefined),
       autoDetect: true,
       hotkeys: { ...DEFAULT_HOTKEYS },

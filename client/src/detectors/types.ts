@@ -14,6 +14,7 @@ export type QuestionDetectorInput = {
 export type QuestionDetectorResult = {
   shouldAnswer: boolean;
   question: string | null;
+  segmentIndex?: number | null;
   probability?: number;
   detector: string;
   skippedReason?: string;
