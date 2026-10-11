@@ -25,39 +25,64 @@ export type AutoAnswerPlan =
       extractQuestion: true;
       hint: string;
       startIndex: number | null;
+      endIndex: number | null;
     };
+
+/**
+ * Repeat = no new speech after the last answered end id.
+ * Sticky Jev starts that still point at Q(n) are clamped to lastEnd+1 when newer segments exist.
+ */
+export function resolveExtractStart(
+  questionStartId: number | null,
+  lastAnsweredEndId: number | null,
+  newestId: number | null,
+): number | null {
+  if (newestId != null && lastAnsweredEndId != null && newestId <= lastAnsweredEndId) return questionStartId;
+  if (questionStartId != null && (lastAnsweredEndId == null || questionStartId > lastAnsweredEndId)) {
+    return questionStartId;
+  }
+  if (lastAnsweredEndId != null && newestId != null && newestId > lastAnsweredEndId) {
+    return lastAnsweredEndId + 1;
+  }
+  return questionStartId;
+}
+
+export function isRepeatBySegmentId(newestId: number | null, lastAnsweredEndId: number | null): boolean {
+  if (lastAnsweredEndId == null || newestId == null) return false;
+  return newestId <= lastAnsweredEndId;
+}
 
 export function planAutoAnswer(opts: {
   windowSegments: WindowSegment[];
-  /** Null = Jev start unavailable → keep the full 90–120s window (err longer). */
+  /** Dedicated question-start id (absolute). */
   startIndex: number | null;
   hintText: string;
-  lastAnswered: string | null;
+  lastAnsweredEndId?: number | null;
+  lastAnsweredStartId?: number | null;
+  lastAnswered?: string | null;
   lastHint?: string | null;
   lastConversation?: string | null;
 }): AutoAnswerPlan {
-  const sliced = sliceFromQuestionStart(opts.windowSegments, opts.startIndex);
-  const conversation = joinSegmentText(sliced);
-  if (!conversation.trim()) return { skip: true, reason: 'empty' };
-
-  const hint =
-    opts.hintText.trim() ||
-    sliced.find((s) => s.index === opts.startIndex)?.text.trim() ||
-    sliced[0]?.text.trim() ||
-    conversation;
-
-  const prevConv = opts.lastConversation ? normalizeQuestion(opts.lastConversation) : '';
-  const curConv = normalizeQuestion(conversation);
-  const sameWindow = Boolean(prevConv && (curConv === prevConv || prevConv.includes(curConv)));
-
-  if (
-    sameQuestion(opts.lastAnswered, hint) ||
-    sameQuestion(opts.lastAnswered, conversation) ||
-    sameQuestion(opts.lastHint, hint) ||
-    sameWindow
-  ) {
+  const newestId = opts.windowSegments.at(-1)?.index ?? null;
+  if (isRepeatBySegmentId(newestId, opts.lastAnsweredEndId ?? null)) {
     return { skip: true, reason: 'repeat' };
   }
 
-  return { skip: false, conversation, extractQuestion: true, hint, startIndex: opts.startIndex };
+  const start = resolveExtractStart(opts.startIndex, opts.lastAnsweredEndId ?? null, newestId);
+  const sliced = sliceFromQuestionStart(opts.windowSegments, start);
+  const conversation = joinSegmentText(sliced);
+  if (!conversation.trim()) return { skip: true, reason: 'empty' };
+
+  const newestText = opts.windowSegments.at(-1)?.text.trim() || '';
+  const startText = sliced.find((s) => s.index === start)?.text.trim() || '';
+  const hint = opts.hintText.trim() || newestText || startText || conversation;
+
+  return {
+    skip: false,
+    conversation,
+    extractQuestion: true,
+    hint,
+    startIndex: start,
+    endIndex: newestId,
+  };
 }

@@ -148,9 +148,11 @@ describe('detect-question', () => {
     expect(body.question).toBeNull();
   });
 
-  it('falls back to Claude when TYPESAFE_API_KEY is missing', async () => {
-    const fetchImpl = mockFetch((url) => {
+  it('falls back to Haiku when TYPESAFE_API_KEY is missing', async () => {
+    const fetchImpl = mockFetch((url, init) => {
       expect(url).toContain('api.anthropic.com');
+      const body = JSON.parse(String(init?.body ?? '{}')) as { model?: string };
+      expect(body.model).toBe('claude-haiku-4-5');
       return jsonResponse({
         content: [
           {
@@ -176,32 +178,33 @@ describe('detect-question', () => {
     expect(body.shouldAnswer).toBe(true);
   });
 
-  it('cools down 5 minutes after Jev 429 and uses Claude', async () => {
+  it('retries Jev once then pauses auto-detect with a short cooldown (no Opus)', async () => {
+    let typesafeCalls = 0;
+    let anthropicCalls = 0;
     const fetchImpl = mockFetch((url) => {
-      if (url.includes('typesafe.ai')) return textResponse('rate limited', 429);
-      return jsonResponse({
-        content: [
-          {
-            type: 'text',
-            text: JSON.stringify({
-              question: null,
-              segment_index: null,
-              is_new: false,
-              is_interview_question: false,
-            }),
-          },
-        ],
-      });
+      if (url.includes('typesafe.ai')) {
+        typesafeCalls += 1;
+        return textResponse('rate limited', 429);
+      }
+      anthropicCalls += 1;
+      return textResponse('should not call opus', 500);
     });
     const env = mockEnv({ TYPESAFE_API_KEY: 'ts', ANTHROPIC_API_KEY: 'sk' });
     const first = (await (await handleDetectQuestion(post({ segments }), env, fetchImpl, 1_000)).json()) as {
+      detector: string;
       fallbackReason?: string;
+      shouldAnswer: boolean;
     };
+    expect(first.detector).toBe('unavailable');
+    expect(first.shouldAnswer).toBe(false);
     expect(first.fallbackReason).toBe('jev_transient');
-    const second = (await (await handleDetectQuestion(post({ segments }), env, fetchImpl, 1_000 + 60_000)).json()) as {
+    expect(typesafeCalls).toBe(2);
+    expect(anthropicCalls).toBe(0);
+    const second = (await (await handleDetectQuestion(post({ segments }), env, fetchImpl, 1_000 + 5_000)).json()) as {
       fallbackReason?: string;
     };
     expect(second.fallbackReason).toBe('jev_cooldown');
+    expect(anthropicCalls).toBe(0);
   });
 
   it('auto mode returns the B start-segment text as a hint, not the joined question', async () => {
@@ -227,8 +230,7 @@ describe('detect-question', () => {
     const body = (await res.json()) as { shouldAnswer: boolean; question: string | null; segmentIndex: number | null };
     expect(body.shouldAnswer).toBe(true);
     expect(body.segmentIndex).toBe(5);
-    expect(body.question).toBe('lovely stuff so moving on from that technical side');
-    expect(body.question).not.toContain('what would you do differently');
+    expect(body.question).toBe('and what would you do differently');
   });
 
   it('question-start uses cumulative 0.3, not argmax', async () => {

@@ -5,14 +5,16 @@ import Settings from './components/Settings';
 import History from './components/History';
 import AnswerPanel from './components/AnswerPanel';
 import ShortcutHelp from './components/ShortcutHelp';
-import { planAutoAnswer } from '../../shared/autoAnswer';
+import { planAutoAnswer, resolveExtractStart } from '../../shared/autoAnswer';
 import {
-  capFromEndByWords,
   DETECT_MAX_WORDS,
   generousCutoffMs,
   joinSegmentText,
   segmentsAfterCutoff,
   sliceFromQuestionStart,
+  TAIL_WATCH_MS,
+  windowForDetect,
+  type WindowSegment,
 } from '../../shared/extractWindow';
 import { confirmSilence, createDetectGateState, nextDetectGate } from './detectors/detectGate';
 import { applyTemplateDefaults, getSessionTemplate } from '../../shared/sessionTemplates';
@@ -52,12 +54,16 @@ const App: React.FC = () => {
   const speechRef = useRef<SpeechController | null>(null);
   const lastAnsweredRef = useRef<string | null>(null);
   const lastAnsweredAtRef = useRef<number | null>(null);
+  const lastAnsweredStartIdRef = useRef<number | null>(null);
+  const lastAnsweredEndIdRef = useRef<number | null>(null);
   const lastHintRef = useRef<string | null>(null);
   const lastConversationRef = useRef<string | null>(null);
   const answeringRef = useRef(false);
   const detectGateRef = useRef(createDetectGateState());
   const silenceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const pendingAutoRef = useRef<{ hint: string; startIndex: number | null }>({ hint: '', startIndex: null });
+  const pendingAutoRef = useRef<{ hint: string; newestId: number | null }>({ hint: '', newestId: null });
+  const tailUntilRef = useRef(0);
+  const tailStartIdRef = useRef<number | null>(null);
   const questionInputRef = useRef<HTMLTextAreaElement>(null);
   const transcriptsRef = useRef(transcripts);
   transcriptsRef.current = transcripts;
@@ -179,18 +185,30 @@ const App: React.FC = () => {
       .catch(() => undefined);
   }, [settingsService]);
 
-  const windowedSegments = useCallback(() => {
-    const cutoff = Date.now() - settings.answerWindowSeconds * 1000;
-    const timed = transcriptsRef.current
+  const sessionFinals = useCallback((): WindowSegment[] => {
+    return transcriptsRef.current
       .filter((t) => t.isFinal && t.original.trim())
-      .filter((t) => {
-        if (!t.timestamp) return true;
-        const ms = new Date(t.timestamp).getTime();
-        return Number.isNaN(ms) || ms >= cutoff;
-      })
       .map((t, index) => ({ index, text: t.original, timestamp: t.timestamp }));
-    return capFromEndByWords(timed, DETECT_MAX_WORDS).map((s, index) => ({ ...s, index }));
-  }, [settings.answerWindowSeconds]);
+  }, []);
+
+  const windowedSegments = useCallback(
+    (extendFromIndex?: number | null) => {
+      return windowForDetect(
+        sessionFinals(),
+        Date.now(),
+        settings.answerWindowSeconds,
+        DETECT_MAX_WORDS,
+        extendFromIndex,
+      );
+    },
+    [sessionFinals, settings.answerWindowSeconds],
+  );
+
+  const finalSig = useMemo(() => {
+    const f = transcripts.filter((t) => t.isFinal && t.original.trim());
+    const last = f[f.length - 1];
+    return `${f.length}|${last?.original ?? ''}|${last?.timestamp ?? ''}`;
+  }, [transcripts]);
 
   const conversationText = useCallback(() => {
     return windowedSegments()
@@ -213,8 +231,11 @@ const App: React.FC = () => {
       hint?: string;
       force: boolean;
       source: 'auto' | 'manual-button' | 'manual-text';
+      replace?: boolean;
+      startId?: number | null;
+      endId?: number | null;
     }) => {
-      if (answeringRef.current) return;
+      if (answeringRef.current && !opts.replace) return;
       const template = getSessionTemplate(settings.sessionTemplateId);
       let conversation = opts.conversation ?? conversationText();
       let question = (opts.question ?? '').trim();
@@ -306,20 +327,21 @@ const App: React.FC = () => {
         if (question && assembled.trim()) {
           lastAnsweredRef.current = question;
           lastAnsweredAtRef.current = Date.now();
+          if (opts.startId != null) lastAnsweredStartIdRef.current = opts.startId;
+          if (opts.endId != null) lastAnsweredEndIdRef.current = opts.endId;
           if (hint) lastHintRef.current = hint;
           if (extractQuestion) lastConversationRef.current = conversation;
           if (opts.source === 'manual-text') setManualDraft('');
-          setQaHistory((prev) =>
-            [
-              {
-                id: `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
-                question,
-                answer: assembled.trim(),
-                createdAt: new Date().toISOString(),
-              },
-              ...prev,
-            ].slice(0, 20),
-          );
+          setQaHistory((prev) => {
+            const item = {
+              id: `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
+              question,
+              answer: assembled.trim(),
+              createdAt: new Date().toISOString(),
+            };
+            if (opts.replace && prev[0]) return [{ ...prev[0], question, answer: item.answer }, ...prev.slice(1)].slice(0, 20);
+            return [item, ...prev].slice(0, 20);
+          });
         }
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Answer failed');
@@ -359,77 +381,104 @@ const App: React.FC = () => {
   }, []);
 
   const fireAutoAnswer = useCallback(
-    (hint: string, startIndexFromA: number | null) => {
+    (hintFromHit: string, replace = false) => {
       clearSilenceTimer();
       void (async () => {
-        if (answeringRef.current) return;
-        const segs = windowedSegments();
-        let startIndex = startIndexFromA;
+        if (answeringRef.current && !replace) return;
+        const all = sessionFinals();
+        const newest = all.at(-1);
+        const newestId = newest?.index ?? null;
+        const newestHit = newest?.text.trim() || hintFromHit;
+
+        if (replace) {
+          const startId = tailStartIdRef.current;
+          const extractSegs = windowedSegments(startId);
+          const conversation = joinSegmentText(sliceFromQuestionStart(extractSegs, startId));
+          if (!conversation || conversation === lastConversationRef.current) return;
+          if (newestId != null) lastAnsweredEndIdRef.current = newestId;
+          setDetectorNote(startId != null ? `Extract window from segment ${startId}` : 'Full extract window (Jev start unavailable)');
+          await runAnswer({
+            force: true,
+            source: 'auto',
+            conversation,
+            hint: newestHit,
+            replace: true,
+            startId,
+            endId: newestId,
+          });
+          return;
+        }
+
+        const detectSegs = windowedSegments();
+        let bStart: number | null = null;
         try {
           const start = await detectQuestion({
             mode: 'question-start',
-            segments: segs,
+            segments: detectSegs,
             windowSeconds: settings.answerWindowSeconds,
             lastAnsweredQuestion: lastAnsweredRef.current,
             threshold: settings.questionThreshold,
           });
-          if (start.segmentIndex != null && Number.isFinite(start.segmentIndex)) {
-            startIndex = start.segmentIndex;
-            setDetectorNote(`Extract window from segment ${start.segmentIndex}`);
-          } else {
-            startIndex = startIndexFromA;
-            setDetectorNote(
-              startIndexFromA != null
-                ? `Extract window from segment ${startIndexFromA}`
-                : 'Full extract window (Jev start unavailable)',
-            );
-          }
+          if (start.segmentIndex != null && Number.isFinite(start.segmentIndex)) bStart = start.segmentIndex;
         } catch {
-          startIndex = startIndexFromA;
-          setDetectorNote(
-            startIndexFromA != null
-              ? `Extract window from segment ${startIndexFromA}`
-              : 'Full extract window (Jev start unavailable)',
-          );
+          bStart = null;
         }
+        const startId = resolveExtractStart(bStart, lastAnsweredEndIdRef.current, newestId);
+        const extractSegs = windowedSegments(startId);
         const plan = planAutoAnswer({
-          windowSegments: segs,
-          startIndex,
-          hintText: hint,
-          lastAnswered: lastAnsweredRef.current,
-          lastHint: lastHintRef.current,
-          lastConversation: lastConversationRef.current,
+          windowSegments: extractSegs,
+          startIndex: startId,
+          hintText: newestHit,
+          lastAnsweredEndId: lastAnsweredEndIdRef.current,
         });
         if (plan.skip) {
           if (plan.reason === 'repeat') setDetectorNote('No new interview question since the last answer.');
           return;
         }
+        if (plan.startIndex != null) {
+          lastAnsweredStartIdRef.current = plan.startIndex;
+          tailStartIdRef.current = plan.startIndex;
+        }
+        if (plan.endIndex != null) lastAnsweredEndIdRef.current = plan.endIndex;
+        tailUntilRef.current = Date.now() + TAIL_WATCH_MS;
+        setDetectorNote(
+          plan.startIndex != null
+            ? `Extract window from segment ${plan.startIndex}`
+            : 'Full extract window (Jev start unavailable)',
+        );
         await runAnswer({
           force: false,
           source: 'auto',
           conversation: plan.conversation,
           hint: plan.hint,
+          startId: plan.startIndex,
+          endId: plan.endIndex,
         });
       })();
     },
-    [clearSilenceTimer, runAnswer, windowedSegments, settings.answerWindowSeconds, settings.questionThreshold],
+    [clearSilenceTimer, runAnswer, windowedSegments, sessionFinals, settings.answerWindowSeconds, settings.questionThreshold],
   );
 
   useEffect(() => {
     if (!settings.autoDetect || !isRecording) {
       detectGateRef.current = createDetectGateState();
-      pendingAutoRef.current = { hint: '', startIndex: null };
+      pendingAutoRef.current = { hint: '', newestId: null };
+      tailUntilRef.current = 0;
       clearSilenceTimer();
     }
   }, [settings.autoDetect, isRecording, clearSilenceTimer]);
 
   useEffect(() => {
-    const finals = transcripts.filter((t) => t.isFinal);
-    if (!settings.autoDetect || !isRecording || finals.length === 0) return;
-    const latest = finals[finals.length - 1];
-    if (!latest.original.trim()) return;
+    const all = sessionFinals();
+    if (!settings.autoDetect || !isRecording || all.length === 0) return;
+    const newest = all[all.length - 1];
+    const newestId = newest.index;
+    if (Date.now() < tailUntilRef.current && tailStartIdRef.current != null && newestId > (lastAnsweredEndIdRef.current ?? -1)) {
+      lastAnsweredEndIdRef.current = newestId;
+      fireAutoAnswer(newest.text, true);
+      return;
+    }
     const segs = windowedSegments();
-    let cancelled = false;
     void detector
       .detect({
         segments: segs,
@@ -438,64 +487,54 @@ const App: React.FC = () => {
         threshold: settings.questionThreshold,
       })
       .then((result) => {
-        if (cancelled) return;
-        const hint = result.question?.trim() || '';
-        const fingerprint =
-          result.segmentIndex != null && Number.isFinite(result.segmentIndex)
-            ? `i:${result.segmentIndex}`
-            : hint;
+        const hint = result.question?.trim() || newest.text.trim();
+        const fingerprint = `a:${newestId}`;
         setDetectorNote(
           result.detector === 'jev'
             ? `Jev p=${result.probability?.toFixed(2) ?? '—'}`
-            : `Detector: ${result.detector}`,
+            : `Detector: ${result.detector}${result.skippedReason ? ` (${result.skippedReason})` : ''}`,
         );
         const outcome = nextDetectGate(detectGateRef.current, {
-          positive: Boolean(result.shouldAnswer && (hint || result.segmentIndex != null || segs.length > 0)),
-          fingerprint: fingerprint || 'window',
+          positive: Boolean(result.shouldAnswer),
+          fingerprint,
+          newestId,
           nowMs: Date.now(),
-          finalCount: finals.length,
-          lastAnswered: lastAnsweredRef.current,
+          finalCount: all.length,
+          lastAnsweredEndId: lastAnsweredEndIdRef.current,
         });
         detectGateRef.current = outcome.state;
         if (outcome.fire) {
-          fireAutoAnswer(hint, result.segmentIndex ?? null);
+          fireAutoAnswer(hint);
           return;
         }
         if (outcome.scheduleSilenceMs == null) {
-          if (!result.shouldAnswer) clearSilenceTimer();
           return;
         }
-        pendingAutoRef.current = { hint, startIndex: result.segmentIndex ?? null };
+        pendingAutoRef.current = { hint, newestId };
         if (silenceTimerRef.current) return;
         silenceTimerRef.current = setTimeout(() => {
           silenceTimerRef.current = null;
-          const latestFinals = transcriptsRef.current.filter((t) => t.isFinal);
+          const latest = sessionFinals().at(-1);
           const silent = confirmSilence(detectGateRef.current, {
             nowMs: Date.now(),
-            finalCount: latestFinals.length,
-            lastAnswered: lastAnsweredRef.current,
+            newestId: latest?.index ?? newestId,
+            lastAnsweredEndId: lastAnsweredEndIdRef.current,
           });
           detectGateRef.current = silent.state;
-          if (silent.fire) {
-            const pending = pendingAutoRef.current;
-            fireAutoAnswer(pending.hint, pending.startIndex);
-          }
+          if (silent.fire) fireAutoAnswer(pendingAutoRef.current.hint || latest?.text || '');
         }, outcome.scheduleSilenceMs);
       })
       .catch(() => undefined);
-    return () => {
-      cancelled = true;
-    };
   }, [
-    transcripts,
+    finalSig,
     isRecording,
     detector,
     settings.answerWindowSeconds,
     settings.questionThreshold,
     settings.autoDetect,
     windowedSegments,
+    sessionFinals,
     fireAutoAnswer,
-    clearSilenceTimer,
   ]);
 
   const handleToggleRecording = async () => {

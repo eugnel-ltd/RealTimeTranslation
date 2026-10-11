@@ -1,11 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import {
   capFromEndByWords,
+  capKeepingStart,
   coerceDetectWindowSeconds,
   generousCutoffMs,
   joinSegmentText,
   segmentsAfterCutoff,
   sliceFromQuestionStart,
+  windowForDetect,
   wordCount,
 } from '../shared/extractWindow';
 import { pinStateOnScroll, scrollTopForAnswer } from '../client/src/scrollPin';
@@ -45,6 +47,28 @@ describe('extract window', () => {
     expect(wordCount(joinSegmentText(capped))).toBeLessThanOrEqual(300);
     expect(capped.at(-1)?.text).toContain('production incident');
     expect(capped[0].index).toBeGreaterThan(0);
+  });
+
+  it('extends back to the question-start id even past the time window', () => {
+    const now = 1_000_000;
+    const segs = [
+      { index: 2, text: 'long case prompt part one', timestamp: new Date(now - 180_000).toISOString() },
+      { index: 8, text: 'and how do you keep abreast of that', timestamp: new Date(now - 5_000).toISOString() },
+    ];
+    const win = windowForDetect(segs, now, 120, 500, 2);
+    expect(win.map((s) => s.index)).toEqual([2, 8]);
+  });
+
+  it('keeps the start segment when capping a long case prompt', () => {
+    const start = { index: 3, text: Array.from({ length: 40 }, () => 'start').join(' ') };
+    const mid = Array.from({ length: 30 }, (_, i) => ({
+      index: 4 + i,
+      text: Array.from({ length: 20 }, () => 'pad').join(' '),
+    }));
+    const end = { index: 40, text: 'what would you do' };
+    const kept = capKeepingStart([start, ...mid, end], 500, 3);
+    expect(kept[0].index).toBe(3);
+    expect(kept.at(-1)?.index).toBe(40);
   });
 
   it('maps legacy 30/60 windows onto 90/120', () => {

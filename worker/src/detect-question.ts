@@ -47,7 +47,9 @@ export type DetectQuestionResult = {
   fallbackReason?: string;
 };
 
-const JEV_COOLDOWN_MS = 5 * 60 * 1000;
+/** Short pause after Jev timeout/transient. Do not fall back to Opus on every debounce. */
+const JEV_COOLDOWN_MS = 20_000;
+const DETECT_FALLBACK_MODEL = 'claude-haiku-4-5';
 let jevUnavailableUntil = 0;
 
 export function resetJevCooldown(): void {
@@ -97,51 +99,35 @@ export async function handleDetectQuestion(
       const status = err instanceof TypesafeHttpError ? err.status : 0;
       if (status === 401 || status === 403) {
         logError({ message: 'jev auth failed', status });
-        return json(await detectStartFallbackOrClaude(env, segments, lastAnswered, 'jev_auth', fetchImpl, mode));
+        return json(pauseDetect(mode, 'jev_auth'));
       }
       if (isTransientTypesafeStatus(status) || status === 0) {
         markJevCooldown(now);
-        log({ message: 'jev cooldown started', status, minutes: 5 });
-        return json(await detectStartFallbackOrClaude(env, segments, lastAnswered, 'jev_transient', fetchImpl, mode));
+        log({ message: 'jev cooldown started', status, ms: JEV_COOLDOWN_MS });
+        return json(pauseDetect(mode, 'jev_transient'));
       }
       logError({ message: 'jev unexpected error', error: err instanceof Error ? err.message : String(err) });
-      return json(await detectStartFallbackOrClaude(env, segments, lastAnswered, 'jev_error', fetchImpl, mode));
+      markJevCooldown(now);
+      return json(pauseDetect(mode, 'jev_error'));
     }
   }
 
   const reason = !env.TYPESAFE_API_KEY ? 'typesafe_unconfigured' : 'jev_cooldown';
-  if (mode === 'question-start') {
-    return json({
-      detector: 'unavailable',
-      shouldAnswer: false,
-      question: null,
-      segmentIndex: null,
-      probabilities: { newQuestionFromOtherParty: null, isInterviewQuestion: null },
-      fallbackReason: reason,
-    } satisfies DetectQuestionResult);
+  if (reason === 'jev_cooldown' || mode === 'question-start') {
+    return json(pauseDetect(mode, reason));
   }
-  return json(await detectWithClaudeOrEmpty(env, segments, lastAnswered, reason, fetchImpl));
+  return json(await detectWithHaikuOrEmpty(env, segments, lastAnswered, reason, fetchImpl));
 }
 
-async function detectStartFallbackOrClaude(
-  env: WorkerEnv,
-  segments: DetectSegment[],
-  lastAnswered: string,
-  fallbackReason: string,
-  fetchImpl: typeof fetch,
-  mode: DetectMode,
-): Promise<DetectQuestionResult> {
-  if (mode === 'question-start') {
-    return {
-      detector: 'unavailable',
-      shouldAnswer: false,
-      question: null,
-      segmentIndex: null,
-      probabilities: { newQuestionFromOtherParty: null, isInterviewQuestion: null },
-      fallbackReason,
-    };
-  }
-  return detectWithClaudeOrEmpty(env, segments, lastAnswered, fallbackReason, fetchImpl);
+function pauseDetect(mode: DetectMode, fallbackReason: string): DetectQuestionResult {
+  return {
+    detector: 'unavailable',
+    shouldAnswer: false,
+    question: null,
+    segmentIndex: null,
+    probabilities: { newQuestionFromOtherParty: null, isInterviewQuestion: null },
+    fallbackReason,
+  };
 }
 
 function clampThreshold(value: number | undefined): number {
@@ -290,12 +276,11 @@ async function detectWithJev(
   const p = typeof noul?.noul === 'number' ? noul.noul : 0;
   const segmentIndex = startIndexFromChoice(choice, win.keys, win.indexByKey);
   const shouldAnswer = p >= threshold;
-  const hintSeg =
-    win.capped.find((s) => s.index === segmentIndex) ?? (shouldAnswer ? win.capped.at(-1) : undefined);
+  const newest = win.capped.at(-1);
   return {
     detector: 'jev',
     shouldAnswer,
-    question: shouldAnswer ? hintSeg?.text.trim() || null : null,
+    question: shouldAnswer ? newest?.text.trim() || null : null,
     segmentIndex,
     probabilities: {
       newQuestionFromOtherParty: p,
@@ -304,7 +289,7 @@ async function detectWithJev(
   };
 }
 
-async function detectWithClaudeOrEmpty(
+async function detectWithHaikuOrEmpty(
   env: WorkerEnv,
   segments: DetectSegment[],
   lastAnswered: string,
@@ -322,10 +307,10 @@ async function detectWithClaudeOrEmpty(
     };
   }
   try {
-    const result = await detectWithClaude(env, segments, lastAnswered, fetchImpl);
+    const result = await detectWithHaiku(env, segments, lastAnswered, fetchImpl);
     return { ...result, fallbackReason };
   } catch (err) {
-    logError({ message: 'claude detect failed', error: err instanceof Error ? err.message : String(err) });
+    logError({ message: 'haiku detect failed', error: err instanceof Error ? err.message : String(err) });
     return {
       detector: 'unavailable',
       shouldAnswer: false,
@@ -337,7 +322,7 @@ async function detectWithClaudeOrEmpty(
   }
 }
 
-async function detectWithClaude(
+async function detectWithHaiku(
   env: WorkerEnv,
   segments: DetectSegment[],
   lastAnswered: string,
@@ -352,7 +337,7 @@ async function detectWithClaude(
       'content-type': 'application/json',
     },
     body: JSON.stringify({
-      model: env.DEFAULT_ANSWER_MODEL || 'claude-opus-5-5',
+      model: DETECT_FALLBACK_MODEL,
       max_tokens: 256,
       output_config: { effort: 'low' },
       system:

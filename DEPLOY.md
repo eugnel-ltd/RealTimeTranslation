@@ -191,7 +191,7 @@ Default: TypeSafe **Jev** (`jev-latest`, `POST /v1/systemone`). See `worker/src/
 - **Window:** last **90–120s** of transcript, capped at **~300 words**.
 - **(B) question start:** Choice over numbered segments `[1]…[N]`. Take the **earliest** segment whose **cumulative probability from segment 1 is ≥ 0.3** (not argmax). Used for manual Answer now and for auto-trigger extraction.
 
-If `TYPESAFE_API_KEY` is missing, or Jev returns 429/5xx/529, the Worker cools down Jev for **5 minutes** and falls back to Claude for auto-detect (A). The client `QuestionDetector` interface is the plug point for a later external service.
+If `TYPESAFE_API_KEY` is missing, auto-detect falls back to **Haiku** (not Opus). If Jev times out (~3s, one retry) or returns 429/5xx/529, the Worker pauses auto-detect for **20 seconds** (`unavailable`) instead of calling Opus on every debounce. The client `QuestionDetector` interface is the plug point for a later external service.
 
 Manual **Answer now** posts `mode: "question-start"` so Jev can point at where the current question *starts* (preamble included). If Jev is unavailable, the client sends the full generous window (90–120s, or back to the previous answer, capped at 3 minutes) and Claude extracts. Extraction must include preamble and all sub-parts (never truncate).
 

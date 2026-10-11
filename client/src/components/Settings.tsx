@@ -289,7 +289,7 @@ const Settings: React.FC<SettingsProps> = ({ isOpen, onClose, initialSettings, o
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                    Conversation window (Jev A, ~200–300 words)
+                    Conversation window (Jev A, ~90–120s / up to ~500 words)
                   </label>
                   <select
                     value={coerceDetectWindowSeconds(draft.answerWindowSeconds)}
