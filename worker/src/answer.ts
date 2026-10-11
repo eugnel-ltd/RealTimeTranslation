@@ -8,6 +8,8 @@ export type AnswerLanguage = 'same' | 'en' | 'yue' | 'zh-CN';
 export type AnswerBody = {
   conversation?: string;
   question?: string;
+  /** Fragment from Jev; never treated as the known question. */
+  questionHint?: string;
   previousQuestion?: string;
   answerLanguage?: AnswerLanguage;
   userContext?: string;
@@ -96,9 +98,14 @@ function normalizeQuestion(q: string): string {
   return q.toLowerCase().replace(/\s+/g, ' ').trim();
 }
 
-export function shouldSkipAnswer(previousQuestion: string | undefined, question: string | undefined, force: boolean): boolean {
+export function shouldSkipAnswer(
+  previousQuestion: string | undefined,
+  question: string | undefined,
+  force: boolean,
+  extractQuestion = false,
+): boolean {
   if (force) return false;
-  if (!question) return true;
+  if (!question) return !extractQuestion;
   if (!previousQuestion) return false;
   return normalizeQuestion(previousQuestion) === normalizeQuestion(question);
 }
@@ -129,7 +136,7 @@ export async function handleAnswer(
   const timeLimit = typeof body.questionTimeLimitSeconds === 'number' && body.questionTimeLimitSeconds > 0
     ? Math.min(600, Math.round(body.questionTimeLimitSeconds))
     : undefined;
-  if (shouldSkipAnswer(body.previousQuestion, knownQuestion || undefined, Boolean(body.force))) {
+  if (shouldSkipAnswer(body.previousQuestion, knownQuestion || undefined, Boolean(body.force), extractQuestion)) {
     return sseResponse(
       encodeSse('skip', { reason: 'no_new_question' }) + encodeSse('done', {}),
     );
@@ -149,9 +156,16 @@ export async function handleAnswer(
     questionTimeLimitSeconds: timeLimit,
   });
 
+  const hint = body.questionHint?.trim();
   const user = knownQuestion
     ? `Question:\n${knownQuestion}\n\nRecent transcript:\n${conversation || '(none)'}`
-    : `Recent transcript (include the full latest question; never truncate):\n${conversation}`;
+    : [
+        'Recent transcript (include the full latest question; never truncate):',
+        conversation,
+        hint ? `\nDetector hint (a fragment only; extract the FULL question from the transcript, not this hint):\n${hint}` : '',
+      ]
+        .filter(Boolean)
+        .join('\n');
 
   const res = await fetchImpl('https://api.anthropic.com/v1/messages', {
     method: 'POST',

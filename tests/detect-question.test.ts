@@ -204,6 +204,33 @@ describe('detect-question', () => {
     expect(second.fallbackReason).toBe('jev_cooldown');
   });
 
+  it('auto mode returns the B start-segment text as a hint, not the joined question', async () => {
+    const fetchImpl = mockFetch(() =>
+      jsonResponse({
+        model: 'jev-1.13.0',
+        answers: {
+          has_substantive_question: { type: 'noul', noul: 0.92 },
+          question_start_segment: {
+            type: 'choice',
+            choice: '4',
+            probabilities: { '1': 0.05, '2': 0.28, '3': 0.55, '4': 0.1, none: 0.02 },
+            confidence: 0.55,
+          },
+        },
+      }),
+    );
+    const res = await handleDetectQuestion(
+      post({ segments: startSegments, threshold: 0.6, windowSeconds: 120 }),
+      mockEnv({ TYPESAFE_API_KEY: 'ts' }),
+      fetchImpl,
+    );
+    const body = (await res.json()) as { shouldAnswer: boolean; question: string | null; segmentIndex: number | null };
+    expect(body.shouldAnswer).toBe(true);
+    expect(body.segmentIndex).toBe(5);
+    expect(body.question).toBe('lovely stuff so moving on from that technical side');
+    expect(body.question).not.toContain('what would you do differently');
+  });
+
   it('question-start uses cumulative 0.3, not argmax', async () => {
     const payload = buildJevStartPayload(startSegments, '', 120, 'jev-latest');
     expect(payload.questions.question_start_segment.type).toBe('choice');

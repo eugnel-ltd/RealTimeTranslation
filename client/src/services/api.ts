@@ -78,6 +78,7 @@ export function detectQuestion(payload: DetectQuestionPayload): Promise<DetectQu
 export type AnswerRequest = {
   conversation: string;
   question?: string;
+  questionHint?: string;
   previousQuestion?: string;
   answerLanguage: string;
   userContext: string;

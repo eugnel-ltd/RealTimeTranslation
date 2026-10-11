@@ -5,10 +5,8 @@ import {
   DEFAULT_QUESTION_THRESHOLD,
   DETECT_MAX_WORDS,
   earliestCumulativeStart,
-  joinSegmentText,
   MAX_QUESTION_THRESHOLD,
   MIN_QUESTION_THRESHOLD,
-  sliceFromQuestionStart,
 } from '../../shared/extractWindow';
 import type { WorkerEnv } from './env';
 import { json, log, logError, readJson } from './http';
@@ -292,11 +290,12 @@ async function detectWithJev(
   const p = typeof noul?.noul === 'number' ? noul.noul : 0;
   const segmentIndex = startIndexFromChoice(choice, win.keys, win.indexByKey);
   const shouldAnswer = p >= threshold;
-  const extracted = joinSegmentText(sliceFromQuestionStart(win.capped, segmentIndex));
+  const hintSeg =
+    win.capped.find((s) => s.index === segmentIndex) ?? (shouldAnswer ? win.capped.at(-1) : undefined);
   return {
     detector: 'jev',
     shouldAnswer,
-    question: shouldAnswer ? extracted || null : null,
+    question: shouldAnswer ? hintSeg?.text.trim() || null : null,
     segmentIndex,
     probabilities: {
       newQuestionFromOtherParty: p,

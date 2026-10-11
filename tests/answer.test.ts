@@ -255,6 +255,58 @@ describe('answer', () => {
     expect(res.status).toBe(400);
   });
 
+  it('extracts a multi-segment question without treating a Jev hint as knownQuestion', async () => {
+    const sse = [
+      'event: content_block_delta',
+      `data: ${JSON.stringify({
+        type: 'content_block_delta',
+        delta: {
+          type: 'text_delta',
+          text: '<<<QUESTION>>>Moving on from that technical side, talk me through a migration and what you would do differently.<<<END>>>I would start with the rollback plan.',
+        },
+      })}`,
+      '',
+      '',
+    ].join('\n');
+    const fetchImpl = mockFetch((_url, init) => {
+      const body = JSON.parse(String(init?.body)) as {
+        messages: Array<{ content: string }>;
+        system: Array<{ text: string }>;
+      };
+      const user = body.messages[0].content;
+      expect(user).not.toMatch(/^Question:/);
+      expect(user).toContain('lovely stuff so moving on');
+      expect(user).toContain('talk me through a time you led a migration');
+      expect(user).toContain('and what would you do differently');
+      expect(user).toContain('Detector hint');
+      expect(user).toContain('talk me through a time you led a migration');
+      expect(body.system.some((b) => b.text.includes('never truncate') || b.text.includes('FULL current interviewer'))).toBe(
+        true,
+      );
+      return new Response(sse, { headers: { 'Content-Type': 'text/event-stream' } });
+    });
+    const res = await handleAnswer(
+      new Request('https://rtt.eugnel.com/api/answer', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          conversation:
+            'lovely stuff so moving on from that technical side\ntalk me through a time you led a migration\nand what would you do differently',
+          extractQuestion: true,
+          questionHint: 'talk me through a time you led a migration',
+          previousQuestion: 'tell me about yourself',
+          templateId: 'interview-competency',
+        }),
+      }),
+      mockEnv({ ANTHROPIC_API_KEY: 'sk' }),
+      fetchImpl,
+    );
+    const text = await res.text();
+    expect(text).toContain('Moving on from that technical side, talk me through a migration');
+    expect(text).toContain('I would start with the rollback plan.');
+    expect(text).not.toContain('no_new_question');
+  });
+
   it('returns skip SSE when the question is unchanged', async () => {
     const res = await handleAnswer(
       new Request('https://rtt.eugnel.com/api/answer', {

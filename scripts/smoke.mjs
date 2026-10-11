@@ -135,8 +135,8 @@ await run('POST /api/detect-question', async () => {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      windowSeconds: 60,
-      threshold: 0.7,
+      windowSeconds: 120,
+      threshold: 0.6,
       lastAnsweredQuestion: null,
       segments: [
         { index: 0, text: 'Thanks for coming in today.' },

@@ -99,7 +99,17 @@ If Access is enabled against the smoke target:
 SMOKE_ACCESS_JWT='<Cf-Access-Jwt-Assertion>' node scripts/smoke.mjs
 ```
 
-The script checks:
+Replay a timestamped transcript through Jev A/B (and optionally Claude extract + answer):
+
+```bash
+node scripts/replay-transcript.mjs path/to/transcript.json
+node scripts/replay-transcript.mjs path/to/transcript.json --answer
+# or: npm run replay -- path/to/transcript.json --answer
+```
+
+JSON: `{ "segments": [{ "index": 0, "text": "...", "timestamp": "..." }], "threshold": 0.6, "windowSeconds": 120 }`. `--answer` posts `extractQuestion: true` with the slice from the B start (or the full 90–120s window if start is missing).
+
+The smoke script checks:
 
 - `GET /api/health`
 - `GET /api/config`
