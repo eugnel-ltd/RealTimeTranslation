@@ -56,6 +56,7 @@ export interface UserSettings {
   questionThreshold: number;
   sessionTemplateId: SessionTemplateId;
   autoDetect: boolean;
+  showAiAnswer: boolean;
   questionTimerSeconds: number;
   prepTimerSeconds: number;
   hotkeys: HotkeyMap;

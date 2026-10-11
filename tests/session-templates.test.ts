@@ -46,4 +46,10 @@ describe('session templates', () => {
       autoDetect: true,
     });
   });
+
+  it('does not overwrite the user AI Answer panel toggle when switching templates', () => {
+    expect(applyTemplateDefaults('meeting')).not.toHaveProperty('showAiAnswer');
+    expect(applyTemplateDefaults('interview-competency')).not.toHaveProperty('showAiAnswer');
+    expect(SESSION_TEMPLATES.every((t) => t.defaultShowAiAnswer !== false)).toBe(true);
+  });
 });

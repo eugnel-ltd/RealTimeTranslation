@@ -94,11 +94,13 @@ export type AnswerRequest = {
 export async function streamAnswer(
   body: AnswerRequest,
   onEvent: (event: string, data: Record<string, unknown>) => void,
+  signal?: AbortSignal,
 ): Promise<void> {
   const res = await apiFetch('/api/answer', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
+    signal,
   });
   if (!res.ok || !res.body) {
     const text = await res.text();
@@ -108,6 +110,10 @@ export async function streamAnswer(
   const decoder = new TextDecoder();
   let buf = '';
   while (true) {
+    if (signal?.aborted) {
+      await reader.cancel();
+      return;
+    }
     const { done, value } = await reader.read();
     if (done) break;
     buf += decoder.decode(value, { stream: true });
@@ -123,6 +129,7 @@ export async function streamAnswer(
       } catch {
         data = {};
       }
+      if (signal?.aborted) return;
       onEvent(event, data);
     }
   }

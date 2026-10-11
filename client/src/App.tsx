@@ -17,6 +17,12 @@ import {
   type WindowSegment,
 } from '../../shared/extractWindow';
 import { confirmSilence, createDetectGateState, nextDetectGate } from './detectors/detectGate';
+import {
+  onShowAiAnswerChange,
+  shouldRunQuestionDetect,
+  splitContainerClass,
+  transcriptPaneClass,
+} from '../../shared/aiAnswerPanel';
 import { applyTemplateDefaults, getSessionTemplate } from '../../shared/sessionTemplates';
 import { QaItem, RecordingSession, TranscriptEntry, TranscriptionRecord, SessionTemplateId, UserSettings } from './types';
 import { ThemeProvider } from './contexts/ThemeContext';
@@ -67,6 +73,10 @@ const App: React.FC = () => {
   const questionInputRef = useRef<HTMLTextAreaElement>(null);
   const transcriptsRef = useRef(transcripts);
   transcriptsRef.current = transcripts;
+  const aiAnswerPanelRef = useRef(settings.showAiAnswer);
+  const prevShowAiAnswerRef = useRef(settings.showAiAnswer);
+  const ignoreUntilFinalSigRef = useRef<string | null>(null);
+  const answerAbortRef = useRef<AbortController | null>(null);
 
   const detector: QuestionDetector = useMemo(
     () => createDebouncedDetector(new HttpQuestionDetector(), 400),
@@ -235,6 +245,7 @@ const App: React.FC = () => {
       startId?: number | null;
       endId?: number | null;
     }) => {
+      if (!aiAnswerPanelRef.current) return;
       if (answeringRef.current && !opts.replace) return;
       const template = getSessionTemplate(settings.sessionTemplateId);
       let conversation = opts.conversation ?? conversationText();
@@ -277,11 +288,13 @@ const App: React.FC = () => {
         } catch {
           setDetectorNote('Full extract window (Jev start unavailable)');
         }
+        if (!aiAnswerPanelRef.current) return;
         conversation = joinSegmentText(segs);
         extractQuestion = true;
       }
 
       if (!conversation && !question) return;
+      if (!aiAnswerPanelRef.current) return;
       answeringRef.current = true;
       setStreaming(true);
       setTimerRunId((n) => n + 1);
@@ -289,6 +302,9 @@ const App: React.FC = () => {
       if (question) setCurrentQuestion(question);
       else if (extractQuestion) setCurrentQuestion('');
       let assembled = '';
+      answerAbortRef.current?.abort();
+      const abort = new AbortController();
+      answerAbortRef.current = abort;
       try {
         await streamAnswer(
           {
@@ -307,6 +323,7 @@ const App: React.FC = () => {
             questionTimeLimitSeconds: settings.questionTimerSeconds || undefined,
           },
           (event, data) => {
+            if (abort.signal.aborted || !aiAnswerPanelRef.current) return;
             if (event === 'skip') {
               setDetectorNote('No new interview question since the last answer.');
               return;
@@ -323,7 +340,9 @@ const App: React.FC = () => {
               setError(String(data.error ?? 'Answer stream error'));
             }
           },
+          abort.signal,
         );
+        if (abort.signal.aborted || !aiAnswerPanelRef.current) return;
         if (question && assembled.trim()) {
           lastAnsweredRef.current = question;
           lastAnsweredAtRef.current = Date.now();
@@ -344,6 +363,8 @@ const App: React.FC = () => {
           });
         }
       } catch (err) {
+        if (err instanceof DOMException && err.name === 'AbortError') return;
+        if (err instanceof Error && err.name === 'AbortError') return;
         setError(err instanceof Error ? err.message : 'Answer failed');
       } finally {
         answeringRef.current = false;
@@ -365,6 +386,7 @@ const App: React.FC = () => {
   );
 
   const answerNow = useCallback(() => {
+    if (!aiAnswerPanelRef.current) return;
     const typed = manualDraft.trim();
     if (typed) {
       void runAnswer({ question: typed, force: true, source: 'manual-text' });
@@ -382,8 +404,10 @@ const App: React.FC = () => {
 
   const fireAutoAnswer = useCallback(
     (hintFromHit: string, replace = false) => {
+      if (!aiAnswerPanelRef.current) return;
       clearSilenceTimer();
       void (async () => {
+        if (!aiAnswerPanelRef.current) return;
         if (answeringRef.current && !replace) return;
         const all = sessionFinals();
         const newest = all.at(-1);
@@ -395,6 +419,7 @@ const App: React.FC = () => {
           const extractSegs = windowedSegments(startId);
           const conversation = joinSegmentText(sliceFromQuestionStart(extractSegs, startId));
           if (!conversation || conversation === lastConversationRef.current) return;
+          if (!aiAnswerPanelRef.current) return;
           if (newestId != null) lastAnsweredEndIdRef.current = newestId;
           setDetectorNote(startId != null ? `Extract window from segment ${startId}` : 'Full extract window (Jev start unavailable)');
           await runAnswer({
@@ -423,6 +448,7 @@ const App: React.FC = () => {
         } catch {
           bStart = null;
         }
+        if (!aiAnswerPanelRef.current) return;
         const startId = resolveExtractStart(bStart, lastAnsweredEndIdRef.current, newestId);
         const extractSegs = windowedSegments(startId);
         const plan = planAutoAnswer({
@@ -446,6 +472,7 @@ const App: React.FC = () => {
             ? `Extract window from segment ${plan.startIndex}`
             : 'Full extract window (Jev start unavailable)',
         );
+        if (!aiAnswerPanelRef.current) return;
         await runAnswer({
           force: false,
           source: 'auto',
@@ -460,17 +487,55 @@ const App: React.FC = () => {
   );
 
   useEffect(() => {
-    if (!settings.autoDetect || !isRecording) {
+    if (!settings.showAiAnswer || !settings.autoDetect || !isRecording) {
       detectGateRef.current = createDetectGateState();
       pendingAutoRef.current = { hint: '', newestId: null };
       tailUntilRef.current = 0;
       clearSilenceTimer();
     }
-  }, [settings.autoDetect, isRecording, clearSilenceTimer]);
+  }, [settings.showAiAnswer, settings.autoDetect, isRecording, clearSilenceTimer]);
+
+  useEffect(() => {
+    aiAnswerPanelRef.current = settings.showAiAnswer;
+    const prev = prevShowAiAnswerRef.current;
+    if (prev === settings.showAiAnswer) return;
+    prevShowAiAnswerRef.current = settings.showAiAnswer;
+    const change = onShowAiAnswerChange(
+      prev,
+      settings.showAiAnswer,
+      sessionFinals().at(-1)?.index ?? null,
+      finalSig,
+    );
+    detector.cancel?.();
+    if (change.resetGate) {
+      detectGateRef.current = createDetectGateState();
+      pendingAutoRef.current = { hint: '', newestId: null };
+      tailUntilRef.current = 0;
+      clearSilenceTimer();
+    }
+    ignoreUntilFinalSigRef.current = change.ignoreUntilFinalSig;
+    if (change.latchEndId != null) lastAnsweredEndIdRef.current = change.latchEndId;
+    if (!settings.showAiAnswer) {
+      answerAbortRef.current?.abort();
+      answeringRef.current = false;
+      setStreaming(false);
+    }
+  }, [settings.showAiAnswer, sessionFinals, finalSig, detector, clearSilenceTimer]);
 
   useEffect(() => {
     const all = sessionFinals();
-    if (!settings.autoDetect || !isRecording || all.length === 0) return;
+    if (
+      !shouldRunQuestionDetect({
+        showAiAnswer: settings.showAiAnswer,
+        autoDetect: settings.autoDetect,
+        isRecording,
+        hasFinals: all.length > 0,
+        finalSig,
+        ignoreUntilFinalSig: ignoreUntilFinalSigRef.current,
+      })
+    ) {
+      return;
+    }
     const newest = all[all.length - 1];
     const newestId = newest.index;
     if (Date.now() < tailUntilRef.current && tailStartIdRef.current != null && newestId > (lastAnsweredEndIdRef.current ?? -1)) {
@@ -487,6 +552,7 @@ const App: React.FC = () => {
         threshold: settings.questionThreshold,
       })
       .then((result) => {
+        if (!aiAnswerPanelRef.current) return;
         const hint = result.question?.trim() || newest.text.trim();
         const fingerprint = `a:${newestId}`;
         setDetectorNote(
@@ -514,6 +580,7 @@ const App: React.FC = () => {
         if (silenceTimerRef.current) return;
         silenceTimerRef.current = setTimeout(() => {
           silenceTimerRef.current = null;
+          if (!aiAnswerPanelRef.current) return;
           const latest = sessionFinals().at(-1);
           const silent = confirmSilence(detectGateRef.current, {
             nowMs: Date.now(),
@@ -532,6 +599,7 @@ const App: React.FC = () => {
     settings.answerWindowSeconds,
     settings.questionThreshold,
     settings.autoDetect,
+    settings.showAiAnswer,
     windowedSegments,
     sessionFinals,
     fireAutoAnswer,
@@ -613,15 +681,18 @@ const App: React.FC = () => {
       if (eventMatchesHotkey(event, hk.toggleRecording)) {
         event.preventDefault();
         void handleToggleRecording();
+      } else if (eventMatchesHotkey(event, hk.toggleAiAnswer)) {
+        event.preventDefault();
+        patchSettings({ showAiAnswer: !settings.showAiAnswer });
       } else if (eventMatchesHotkey(event, hk.answerNow)) {
         event.preventDefault();
-        answerNow();
+        if (settings.showAiAnswer) answerNow();
       } else if (eventMatchesHotkey(event, hk.toggleAutoDetect)) {
         event.preventDefault();
         patchSettings({ autoDetect: !settings.autoDetect });
       } else if (eventMatchesHotkey(event, hk.focusQuestionInput)) {
         event.preventDefault();
-        questionInputRef.current?.focus();
+        if (settings.showAiAnswer) questionInputRef.current?.focus();
       } else if (eventMatchesHotkey(event, hk.clear)) {
         event.preventDefault();
         if (activeTab !== 'history') handleClearTranscripts();
@@ -639,19 +710,12 @@ const App: React.FC = () => {
         cycleLayout();
       } else if (eventMatchesHotkey(event, hk.copyAnswer)) {
         event.preventDefault();
-        void copyLatest();
+        if (settings.showAiAnswer) void copyLatest();
       }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   });
-
-  const layoutClass = {
-    'transcript-left': 'flex flex-col md:flex-row',
-    'transcript-right': 'flex flex-col md:flex-row-reverse',
-    'transcript-top': 'flex flex-col',
-    'transcript-bottom': 'flex flex-col-reverse',
-  }[settings.splitLayout];
 
   return (
     <ThemeProvider>
@@ -665,6 +729,8 @@ const App: React.FC = () => {
           onTabChange={setActiveTab}
           sessionTemplateId={settings.sessionTemplateId}
           onSessionTemplate={(id: SessionTemplateId) => patchSettings(applyTemplateDefaults(id))}
+          showAiAnswer={settings.showAiAnswer}
+          onToggleAiAnswer={() => patchSettings({ showAiAnswer: !settings.showAiAnswer })}
         />
 
         <main className="container mx-auto px-4 py-8">
@@ -675,41 +741,43 @@ const App: React.FC = () => {
           )}
 
           {activeTab === 'transcription' ? (
-            <div className={`${layoutClass} gap-4`}>
-              <div className="flex-1 min-w-0">
+            <div className={splitContainerClass(settings.splitLayout, settings.showAiAnswer)}>
+              <div className={settings.showAiAnswer ? 'flex-1 min-w-0' : 'w-full h-full'}>
                 <TranscriptBox
                   transcripts={transcripts}
                   outputLanguage={settings.outputLanguage}
                   secondOutputLanguage={settings.secondOutputLanguage}
-                  className="h-[50vh] md:h-[calc(100vh-12rem)] rounded-lg"
+                  className={transcriptPaneClass(settings.showAiAnswer)}
                 />
               </div>
-              <div className="flex-1 min-w-0">
-                <AnswerPanel
-                  question={currentQuestion}
-                  answer={currentAnswer}
-                  streaming={streaming}
-                  history={qaHistory}
-                  detectorNote={detectorNote}
-                  onAnswerNow={answerNow}
-                  onCopy={() => void copyLatest()}
-                  autoDetect={settings.autoDetect}
-                  onToggleAutoDetect={() => patchSettings({ autoDetect: !settings.autoDetect })}
-                  manualDraft={manualDraft}
-                  onManualDraft={setManualDraft}
-                  onManualSubmit={() => {
-                    const typed = manualDraft.trim();
-                    if (typed) void runAnswer({ question: typed, force: true, source: 'manual-text' });
-                  }}
-                  questionInputRef={questionInputRef}
-                  sessionTemplateId={settings.sessionTemplateId}
-                  questionTimerSeconds={settings.questionTimerSeconds}
-                  prepTimerSeconds={settings.prepTimerSeconds}
-                  onQuestionTimerSeconds={(n) => patchSettings({ questionTimerSeconds: n })}
-                  onPrepTimerSeconds={(n) => patchSettings({ prepTimerSeconds: n })}
-                  timerRunId={timerRunId}
-                />
-              </div>
+              {settings.showAiAnswer ? (
+                <div className="flex-1 min-w-0">
+                  <AnswerPanel
+                    question={currentQuestion}
+                    answer={currentAnswer}
+                    streaming={streaming}
+                    history={qaHistory}
+                    detectorNote={detectorNote}
+                    onAnswerNow={answerNow}
+                    onCopy={() => void copyLatest()}
+                    autoDetect={settings.autoDetect}
+                    onToggleAutoDetect={() => patchSettings({ autoDetect: !settings.autoDetect })}
+                    manualDraft={manualDraft}
+                    onManualDraft={setManualDraft}
+                    onManualSubmit={() => {
+                      const typed = manualDraft.trim();
+                      if (typed) void runAnswer({ question: typed, force: true, source: 'manual-text' });
+                    }}
+                    questionInputRef={questionInputRef}
+                    sessionTemplateId={settings.sessionTemplateId}
+                    questionTimerSeconds={settings.questionTimerSeconds}
+                    prepTimerSeconds={settings.prepTimerSeconds}
+                    onQuestionTimerSeconds={(n) => patchSettings({ questionTimerSeconds: n })}
+                    onPrepTimerSeconds={(n) => patchSettings({ prepTimerSeconds: n })}
+                    timerRunId={timerRunId}
+                  />
+                </div>
+              ) : null}
             </div>
           ) : (
             <History />

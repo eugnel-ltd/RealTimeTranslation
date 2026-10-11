@@ -1,3 +1,4 @@
+import { parseShowAiAnswer } from '../../../shared/aiAnswerPanel';
 import {
   coerceDetectWindowSeconds,
   DEFAULT_QUESTION_THRESHOLD,
@@ -38,6 +39,7 @@ export class SettingsService {
       profileId: parsed.profileId === 'james' || parsed.profileId === 'wing' ? parsed.profileId : '',
       sessionTemplateId,
       autoDetect: parsed.autoDetect !== false,
+      showAiAnswer: parseShowAiAnswer(parsed.showAiAnswer, tpl.defaultShowAiAnswer !== false),
       answerWindowSeconds: coerceDetectWindowSeconds(parsed.answerWindowSeconds),
       questionThreshold:
         typeof parsed.questionThreshold === 'number' && Number.isFinite(parsed.questionThreshold)
@@ -73,6 +75,7 @@ export class SettingsService {
       questionThreshold: DEFAULT_QUESTION_THRESHOLD,
       ...applyTemplateDefaults(undefined),
       autoDetect: true,
+      showAiAnswer: getSessionTemplate(undefined).defaultShowAiAnswer !== false,
       hotkeys: { ...DEFAULT_HOTKEYS },
     };
   }

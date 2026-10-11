@@ -213,6 +213,17 @@ const Settings: React.FC<SettingsProps> = ({ isOpen, onClose, initialSettings, o
 
               <fieldset className="border border-gray-200 dark:border-gray-600 rounded-md p-3 space-y-3">
                 <legend className="px-1 text-sm font-semibold text-indigo-700 dark:text-indigo-300">AI Answer</legend>
+                <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+                  <input
+                    type="checkbox"
+                    checked={draft.showAiAnswer}
+                    onChange={(e) => patch({ showAiAnswer: e.target.checked })}
+                  />
+                  Show AI Answer panel
+                </label>
+                <p className="text-xs text-gray-500 dark:text-gray-400">
+                  When off, the transcript uses the full screen and no Jev or answer API calls are made. Hotkey: P.
+                </p>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                     Session type

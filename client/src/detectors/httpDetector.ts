@@ -46,10 +46,17 @@ export function createDebouncedDetector(inner: QuestionDetector, waitMs = 400): 
         timer = setTimeout(() => {
           const job = pending;
           pending = null;
+          timer = null;
           if (!job) return;
           inner.detect(job.input).then(job.resolve, job.reject);
         }, waitMs);
       });
+    },
+    cancel() {
+      if (timer) clearTimeout(timer);
+      timer = null;
+      pending = null;
+      inner.cancel?.();
     },
   };
 }

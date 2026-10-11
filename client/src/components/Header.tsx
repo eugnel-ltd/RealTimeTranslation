@@ -1,5 +1,5 @@
 import React from 'react';
-import { MicrophoneIcon, StopIcon, TrashIcon, CogIcon, MoonIcon, SunIcon, ClockIcon } from '@heroicons/react/24/solid';
+import { MicrophoneIcon, StopIcon, TrashIcon, CogIcon, MoonIcon, SunIcon, ClockIcon, SparklesIcon } from '@heroicons/react/24/solid';
 import type { SessionTemplateId } from '../types';
 import { useTheme } from '../contexts/ThemeContext';
 import SessionTemplateSelect from './SessionTemplateSelect';
@@ -13,6 +13,8 @@ interface HeaderProps {
   onTabChange: (tab: 'transcription' | 'history') => void;
   sessionTemplateId: SessionTemplateId;
   onSessionTemplate: (id: SessionTemplateId) => void;
+  showAiAnswer: boolean;
+  onToggleAiAnswer: () => void;
 }
 
 const Header: React.FC<HeaderProps> = ({ 
@@ -24,6 +26,8 @@ const Header: React.FC<HeaderProps> = ({
   onTabChange,
   sessionTemplateId,
   onSessionTemplate,
+  showAiAnswer,
+  onToggleAiAnswer,
 }) => {
   const { theme, toggleTheme } = useTheme();
 
@@ -77,6 +81,20 @@ const Header: React.FC<HeaderProps> = ({
           >
             <TrashIcon className="h-5 w-5" />
             <span className="hidden sm:inline">Clear</span>
+          </button>
+          <button
+            type="button"
+            role="switch"
+            aria-checked={showAiAnswer}
+            aria-label="AI Answer panel"
+            onClick={onToggleAiAnswer}
+            title={showAiAnswer ? 'Hide AI Answer panel (P)' : 'Show AI Answer panel (P)'}
+            className={`flex items-center space-x-2 px-3 py-2 rounded-full transition-all duration-300 transform hover:scale-105 ${
+              showAiAnswer ? 'bg-green-500 hover:bg-green-600' : 'bg-gray-600 hover:bg-gray-700'
+            }`}
+          >
+            <SparklesIcon className="h-5 w-5" />
+            <span className="hidden sm:inline">AI Answer {showAiAnswer ? 'On' : 'Off'}</span>
           </button>
           <button
             onClick={onOpenSettings}

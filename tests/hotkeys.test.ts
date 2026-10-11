@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { eventMatchesHotkey, parseHotkey, DEFAULT_HOTKEYS } from '../client/src/hotkeys';
+import { eventMatchesHotkey, parseHotkey, DEFAULT_HOTKEYS, HOTKEY_LABELS } from '../client/src/hotkeys';
 
 function fakeEvent(partial: Partial<{ code: string; key: string; altKey: boolean; ctrlKey: boolean; metaKey: boolean; shiftKey: boolean }>): {
   code: string;
@@ -36,11 +36,16 @@ describe('hotkeys', () => {
     expect(eventMatchesHotkey(fakeEvent({ code: 'KeyR', ctrlKey: true }), DEFAULT_HOTKEYS.toggleRecording)).toBe(false);
   });
 
-  it('defaults auto-detect and question-input shortcuts', () => {
+  it('defaults auto-detect, question-input, and AI Answer panel shortcuts without clashes', () => {
     expect(DEFAULT_HOTKEYS.toggleAutoDetect).toBe('KeyD');
     expect(DEFAULT_HOTKEYS.focusQuestionInput).toBe('KeyQ');
+    expect(DEFAULT_HOTKEYS.toggleAiAnswer).toBe('KeyP');
     expect(eventMatchesHotkey(fakeEvent({ code: 'KeyD' }), DEFAULT_HOTKEYS.toggleAutoDetect)).toBe(true);
     expect(eventMatchesHotkey(fakeEvent({ code: 'KeyQ' }), DEFAULT_HOTKEYS.focusQuestionInput)).toBe(true);
+    expect(eventMatchesHotkey(fakeEvent({ code: 'KeyP' }), DEFAULT_HOTKEYS.toggleAiAnswer)).toBe(true);
+    const values = Object.values(DEFAULT_HOTKEYS);
+    expect(new Set(values).size).toBe(values.length);
+    expect(Object.keys(HOTKEY_LABELS).sort()).toEqual(Object.keys(DEFAULT_HOTKEYS).sort());
   });
 
   it('matches ? via Shift+Slash', () => {

@@ -29,6 +29,8 @@ export type SessionTemplate = {
   manualPlaceholder: string;
   prominentManualInput: boolean;
   defaultAutoDetect: boolean;
+  /** Panel default only; the user's localStorage toggle wins during a session. */
+  defaultShowAiAnswer?: boolean;
   maxTokens: number;
   timer: {
     enabled: boolean;

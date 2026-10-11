@@ -23,4 +23,5 @@ export type QuestionDetectorResult = {
 /** Swap this for an external question-detection service later. */
 export interface QuestionDetector {
   detect(input: QuestionDetectorInput): Promise<QuestionDetectorResult>;
+  cancel?(): void;
 }

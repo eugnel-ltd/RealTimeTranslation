@@ -9,7 +9,8 @@ export type HotkeyAction =
   | 'copyAnswer'
   | 'showHelp'
   | 'toggleAutoDetect'
-  | 'focusQuestionInput';
+  | 'focusQuestionInput'
+  | 'toggleAiAnswer';
 
 export type HotkeyMap = Record<HotkeyAction, string>;
 
@@ -25,6 +26,7 @@ export const DEFAULT_HOTKEYS: HotkeyMap = {
   showHelp: 'Shift+Slash',
   toggleAutoDetect: 'KeyD',
   focusQuestionInput: 'KeyQ',
+  toggleAiAnswer: 'KeyP',
 };
 
 export const HOTKEY_LABELS: Record<HotkeyAction, string> = {
@@ -39,6 +41,7 @@ export const HOTKEY_LABELS: Record<HotkeyAction, string> = {
   showHelp: 'Shortcut help',
   toggleAutoDetect: 'Toggle auto-detect',
   focusQuestionInput: 'Focus question input',
+  toggleAiAnswer: 'Toggle AI Answer panel',
 };
 
 type Parsed = {
