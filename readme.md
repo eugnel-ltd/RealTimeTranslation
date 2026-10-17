@@ -93,19 +93,18 @@ The repository contains two separate applications with different tech stacks:
    cd RealTimeTranslation
    ```
 
-2. Install frontend dependencies:
+2. Install the Worker and client dependencies:
    ```bash
-   cd client
    npm install
+   npm --prefix client install
    ```
 
-3. Configure environment variables:
-   - Copy `.env.example` to `.env` in the root directory
-   - Add your Azure Speech Service credentials:
-     ```
-     SPEECH_KEY=your_azure_speech_key
-     SPEECH_REGION=your_azure_region
-     ```
+3. Configure the Worker's local variables (the browser never holds a provider key; it gets a short-lived speech token from `/api/speech-token`):
+   ```bash
+   cp .dev.vars.example .dev.vars
+   # fill the keys in .dev.vars; keep SKIP_ACCESS_CHECK=true for local work
+   ```
+   See [DEPLOY.md](DEPLOY.md) for each secret and variable.
 
 ## Development
 
@@ -116,10 +115,10 @@ The repository contains two separate applications with different tech stacks:
    ```
 
 ### Web Application
-1. Start the frontend development server:
+1. Start the Worker (port 8787) and, in a second terminal, the client (Vite proxies `/api` to the Worker):
    ```bash
-   cd client
-   npm run dev
+   npm run dev:worker
+   npm run dev:client
    ```
 
 2. Open `http://localhost:38220` in your browser
