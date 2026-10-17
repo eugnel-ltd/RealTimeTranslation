@@ -26,8 +26,8 @@
   "kv_namespaces": [
     {
       "binding": "PROFILES",
-      // npx wrangler kv namespace create PROFILES — paste the printed id here. See DEPLOY.md.
-      "id": "replace-after-wrangler-kv-namespace-create"
+      // The live PROFILES namespace of the rtt Worker (17 Oct 2026). A new account: see DEPLOY.md.
+      "id": "5b213bbe04c14fb287ce53076fd90ddc"
     }
   ],
   "vars": {
