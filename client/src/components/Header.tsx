@@ -1,6 +1,8 @@
 import React from 'react';
-import { MicrophoneIcon, StopIcon, TrashIcon, CogIcon, MoonIcon, SunIcon, ClockIcon } from '@heroicons/react/24/solid';
+import { MicrophoneIcon, StopIcon, TrashIcon, CogIcon, MoonIcon, SunIcon, ClockIcon, SparklesIcon } from '@heroicons/react/24/solid';
+import type { SessionTemplateId } from '../types';
 import { useTheme } from '../contexts/ThemeContext';
+import SessionTemplateSelect from './SessionTemplateSelect';
 
 interface HeaderProps {
   isRecording: boolean;
@@ -9,6 +11,10 @@ interface HeaderProps {
   onOpenSettings: () => void;
   activeTab: 'transcription' | 'history';
   onTabChange: (tab: 'transcription' | 'history') => void;
+  sessionTemplateId: SessionTemplateId;
+  onSessionTemplate: (id: SessionTemplateId) => void;
+  showAiAnswer: boolean;
+  onToggleAiAnswer: () => void;
 }
 
 const Header: React.FC<HeaderProps> = ({ 
@@ -17,7 +23,11 @@ const Header: React.FC<HeaderProps> = ({
   onClearHistory, 
   onOpenSettings,
   activeTab,
-  onTabChange 
+  onTabChange,
+  sessionTemplateId,
+  onSessionTemplate,
+  showAiAnswer,
+  onToggleAiAnswer,
 }) => {
   const { theme, toggleTheme } = useTheme();
 
@@ -33,7 +43,15 @@ const Header: React.FC<HeaderProps> = ({
     <header className="bg-indigo-600 dark:bg-indigo-800 text-white p-4 sm:p-6">
       <div className="flex flex-wrap justify-between items-center">
         <h1 className="text-2xl font-bold mb-4 sm:mb-0">Real-Time Translator</h1>
-        <div className="flex flex-wrap justify-center sm:justify-end space-x-2 sm:space-x-4">
+        <div className="flex flex-wrap justify-center sm:justify-end items-center gap-2 sm:gap-4">
+          <label className="flex items-center gap-2 text-sm">
+            <span className="hidden sm:inline text-indigo-100">Session</span>
+            <SessionTemplateSelect
+              value={sessionTemplateId}
+              onChange={onSessionTemplate}
+              className="max-w-[11rem] sm:max-w-xs px-2 py-1.5 rounded-md text-sm text-gray-900"
+            />
+          </label>
           <button
             onClick={handleRecordingToggle}
             className={`flex items-center space-x-2 px-3 py-2 rounded-full transition-all duration-300 transform hover:scale-105 ${
@@ -63,6 +81,20 @@ const Header: React.FC<HeaderProps> = ({
           >
             <TrashIcon className="h-5 w-5" />
             <span className="hidden sm:inline">Clear</span>
+          </button>
+          <button
+            type="button"
+            role="switch"
+            aria-checked={showAiAnswer}
+            aria-label="AI Answer panel"
+            onClick={onToggleAiAnswer}
+            title={showAiAnswer ? 'Hide AI Answer panel (P)' : 'Show AI Answer panel (P)'}
+            className={`flex items-center space-x-2 px-3 py-2 rounded-full transition-all duration-300 transform hover:scale-105 ${
+              showAiAnswer ? 'bg-green-500 hover:bg-green-600' : 'bg-gray-600 hover:bg-gray-700'
+            }`}
+          >
+            <SparklesIcon className="h-5 w-5" />
+            <span className="hidden sm:inline">AI Answer {showAiAnswer ? 'On' : 'Off'}</span>
           </button>
           <button
             onClick={onOpenSettings}

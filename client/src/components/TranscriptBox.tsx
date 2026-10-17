@@ -7,6 +7,7 @@ interface TranscriptBoxProps {
   transcripts: TranscriptEntry[];
   outputLanguage: string;
   secondOutputLanguage?: string;
+  className?: string;
 }
 
 const getLanguageDisplayName = (code: string): string => {
@@ -17,7 +18,8 @@ const getLanguageDisplayName = (code: string): string => {
 const TranscriptBox: React.FC<TranscriptBoxProps> = ({ 
   transcripts, 
   outputLanguage, 
-  secondOutputLanguage 
+  secondOutputLanguage,
+  className,
 }) => {
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -30,7 +32,7 @@ const TranscriptBox: React.FC<TranscriptBoxProps> = ({
   const languages = [outputLanguage, secondOutputLanguage].filter((lang): lang is string => Boolean(lang));
 
   return (
-    <div ref={scrollRef} className="p-4 sm:p-6 h-[calc(100vh-12rem)] overflow-y-auto bg-white dark:bg-gray-800 transition-colors duration-300">
+    <div ref={scrollRef} className={`p-4 sm:p-6 overflow-y-auto bg-white dark:bg-gray-800 transition-colors duration-300 ${className ?? 'h-[calc(100vh-12rem)]'}`}>
       <AnimatePresence>
         {transcripts.map((entry, index) => (
           <motion.div

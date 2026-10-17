@@ -7,6 +7,8 @@ This repository contains two independent applications for real-time speech trans
 
 Both applications provide real-time speech translation capabilities but are completely independent of each other. The Python app was the initial implementation, while the web application is a more feature-rich, full-stack solution developed later.
 
+The web app deploys as a single Cloudflare Worker (`rtt`, custom domain `rtt.eugnel.com`). See [DEPLOY.md](DEPLOY.md) for secrets, vars, and smoke tests. API keys must not be placed in `VITE_*` client env vars.
+
 ## Features
 
 ### Common Features
@@ -24,6 +26,9 @@ Both applications provide real-time speech translation capabilities but are comp
 - Modern, responsive web interface
 - Dark/light theme support
 - Type-safe frontend implementation
+- Session type templates (screening, AI/timed, competency, one-way AI video, meeting) from `shared/sessionTemplates.ts`
+- AI Answer: auto-detect toggle (hotkey D), typed questions (Enter / hotkey Q), generous manual question extract, optional prep + speak timers
+- Keyboard shortcuts overlay (`?`) including the new auto-detect and question-input keys
 
 ## Tech Stack
 
@@ -88,19 +93,18 @@ The repository contains two separate applications with different tech stacks:
    cd RealTimeTranslation
    ```
 
-2. Install frontend dependencies:
+2. Install the Worker and client dependencies:
    ```bash
-   cd client
    npm install
+   npm --prefix client install
    ```
 
-3. Configure environment variables:
-   - Copy `.env.example` to `.env` in the root directory
-   - Add your Azure Speech Service credentials:
-     ```
-     SPEECH_KEY=your_azure_speech_key
-     SPEECH_REGION=your_azure_region
-     ```
+3. Configure the Worker's local variables (the browser never holds a provider key; it gets a short-lived speech token from `/api/speech-token`):
+   ```bash
+   cp .dev.vars.example .dev.vars
+   # fill the keys in .dev.vars; keep SKIP_ACCESS_CHECK=true for local work
+   ```
+   See [DEPLOY.md](DEPLOY.md) for each secret and variable.
 
 ## Development
 
@@ -111,10 +115,10 @@ The repository contains two separate applications with different tech stacks:
    ```
 
 ### Web Application
-1. Start the frontend development server:
+1. Start the Worker (port 8787) and, in a second terminal, the client (Vite proxies `/api` to the Worker):
    ```bash
-   cd client
-   npm run dev
+   npm run dev:worker
+   npm run dev:client
    ```
 
 2. Open `http://localhost:38220` in your browser

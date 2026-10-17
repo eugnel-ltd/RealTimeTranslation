@@ -1,0 +1,35 @@
+# product.yaml: the one file a product owes the company.
+#
+# The company registry (eugnel-hq) reads this file from `main` and never edits it. The AI-SDLC
+# channel modules write `live_version` and `live_since`; the baseline step writes `baseline`;
+# the owner or an intake writes `status`. Validate with `.ai-sdlc/manifest_check.py product.yaml`
+# (run it by hand: the company `manifest` check is pending here, see AGENTS.md). Schema: the
+# skill's `schemas/product.schema.json`.
+
+id: rtt
+name: Real-Time Translation
+status: building             # live for the owner only, behind Cloudflare Access (DEPLOY.md)
+repo: eugnel-ltd/RealTimeTranslation
+north_star: docs/north-star.md
+
+channels:
+  web:
+    domain: rtt.eugnel.com   # Cloudflare Worker rtt (wrangler.jsonc), static client and /api/*
+    live_version: null
+    live_since: null
+
+# Not sold yet. The owner named a translation SaaS as an upcoming product (17 Oct 2026).
+pricing:
+  model: free
+  products: []
+
+# The product baseline (skill `modules/baseline.md`). Values: done | missing | waived | excluded.
+baseline:
+  accounts: missing          # Cloudflare Access lets the owner in; no customer accounts
+  durable_data: done         # KV namespace PROFILES (candidate profiles)
+  payments: missing
+  legal: missing
+  observability: missing     # Workers logs and traces only; no error reporting
+  support: missing
+  listing: missing
+waivers: {}
