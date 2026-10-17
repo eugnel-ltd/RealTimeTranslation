@@ -180,7 +180,7 @@ export async function handleAnswer(
         generationConfig: {
           // Gemini counts thinking tokens against maxOutputTokens; keep the answer budget whole.
           maxOutputTokens: template.maxTokens + THINKING_HEADROOM_TOKENS,
-          thinkingConfig: { thinkingLevel: 'low' },
+          thinkingConfig: { thinkingLevel: model === 'gemini-3.5-flash-lite' ? 'minimal' : 'low' },
         },
       }),
     },
@@ -232,10 +232,10 @@ function relayGeminiStream(
       try {
         stream: while (true) {
           const { done, value } = await reader.read();
-          if (done) break;
-          buffer += decoder.decode(value, { stream: true });
+          // At the end, flush the decoder and parse a last event that has no trailing blank line.
+          buffer += done ? decoder.decode() : decoder.decode(value, { stream: true });
           const chunks = buffer.split(/\r?\n\r?\n/);
-          buffer = chunks.pop() ?? '';
+          buffer = done ? '' : chunks.pop() ?? '';
           for (const chunk of chunks) {
             const payload = chunk.split(/\r?\n/)
               .filter((line) => line.startsWith('data:'))
@@ -304,6 +304,7 @@ function relayGeminiStream(
             }
             if (completed) break stream;
           }
+          if (done) break;
         }
         if (!completed) throw new Error('Gemini stream ended before finishReason');
         if (!questionEmitted && preamble) {

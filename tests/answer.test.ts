@@ -87,7 +87,7 @@ describe('answer', () => {
       expect(new Headers(init?.headers).get('x-goog-api-key')).toBe('test-key');
       expect(new Headers(init?.headers).get('content-type')).toBe('application/json');
       const body = JSON.parse(String(init?.body));
-      expect(body.generationConfig).toEqual({ maxOutputTokens: 1024 + 2048, thinkingConfig: { thinkingLevel: 'low' } });
+      expect(body.generationConfig).toEqual({ maxOutputTokens: 1024 + 2048, thinkingConfig: { thinkingLevel: 'minimal' } });
       expect(body.systemInstruction.parts).toHaveLength(3);
       expect(body.systemInstruction.parts[0].text).toContain('STAR');
       expect(body.systemInstruction.parts[1]).toEqual({ text: 'Candidate profile (James):\nStaff engineer at Eugnel' });
@@ -216,6 +216,27 @@ describe('answer', () => {
   it.each(['STOP', 'MAX_TOKENS'])('completes with finishReason %s', async (reason) => {
     const res = await handleAnswer(post({ question: 'Hello?' }), env(), mockFetch(() => stream('Answer', reason)));
     expect((await readEvents(res)).at(-1)).toEqual({ event: 'done', data: {} });
+  });
+
+  it('parses a final event that has no trailing blank line', async () => {
+    const sse = event(candidate('First ')) + `data: ${JSON.stringify(candidate('last', 'STOP'))}`;
+    const res = await handleAnswer(post({ question: 'Hello?' }), env(), mockFetch(() => new Response(sse)));
+    const text = await res.text();
+    expect(text).toContain('"text":"last"');
+    expect(text).toContain('event: done');
+    expect(text).not.toContain('event: error');
+  });
+
+  it.each([
+    ['gemini-3.8-flash', 'low'],
+    ['gemini-3.5-flash-lite', 'minimal'],
+  ])('asks %s for thinking level %s', async (model, level) => {
+    let body: any;
+    await handleAnswer(post({ question: 'Hello?', model }), env(), mockFetch((_url, init) => {
+      body = JSON.parse(String(init?.body));
+      return stream();
+    }));
+    expect(body.generationConfig.thinkingConfig).toEqual({ thinkingLevel: level });
   });
 
   it.each(['SAFETY', 'RECITATION', 'PROHIBITED_CONTENT', 'OTHER'])('reports finishReason %s as an error without done', async (reason) => {
