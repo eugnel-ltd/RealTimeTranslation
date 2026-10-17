@@ -27,7 +27,7 @@ Nobody yet. The app runs for the owner only, behind Cloudflare Access. Who pays 
 
 ## Measures
 
-- Provider spend per session (Azure Speech, Gemini, Anthropic) against the company break-even view.
+- Provider spend per session (Azure Speech, Gemini) against the company break-even view.
 
 ## Marketing
 

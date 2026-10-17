@@ -26,10 +26,10 @@ export type AnswerBody = {
 export type SystemBlock = {
   type: 'text';
   text: string;
-  cache_control?: { type: 'ephemeral' };
 };
 
-const ALLOWED_MODELS = new Set(['claude-opus-5-5', 'claude-sonnet-5-5']);
+const ALLOWED_MODELS = new Set(['gemini-3.8-flash', 'gemini-3.5-flash-lite']);
+const THINKING_HEADROOM_TOKENS = 2048;
 
 function languageInstruction(lang: AnswerLanguage | undefined): string {
   switch (lang) {
@@ -80,7 +80,6 @@ export function buildAnswerSystemBlocks(opts: {
     blocks.push({
       type: 'text',
       text: `Candidate profile (${opts.profileName || 'selected'}):\n${profile}`,
-      cache_control: { type: 'ephemeral' },
     });
   }
   blocks.push({
@@ -116,7 +115,7 @@ export async function handleAnswer(
   fetchImpl: typeof fetch = fetch,
   loader: ProfileLoader = kvProfileLoader(env.PROFILES),
 ): Promise<Response> {
-  if (!env.ANTHROPIC_API_KEY) return errorJson('ANTHROPIC_API_KEY is not configured', 503);
+  if (!env.GEMINI_API_KEY) return errorJson('GEMINI_API_KEY is not configured', 503);
 
   const body = await readJson<AnswerBody>(request);
   const conversation = (body.conversation ?? '').trim();
@@ -127,7 +126,7 @@ export async function handleAnswer(
 
   const model = body.model && ALLOWED_MODELS.has(body.model)
     ? body.model
-    : env.DEFAULT_ANSWER_MODEL || 'claude-opus-5-5';
+    : ALLOWED_MODELS.has(env.DEFAULT_ANSWER_MODEL) ? env.DEFAULT_ANSWER_MODEL : 'gemini-3.8-flash';
 
   const templateId = isSessionTemplateId(body.templateId) ? body.templateId : undefined;
   const template = getSessionTemplate(templateId);
@@ -167,31 +166,34 @@ export async function handleAnswer(
         .filter(Boolean)
         .join('\n');
 
-  const res = await fetchImpl('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: {
-      'x-api-key': env.ANTHROPIC_API_KEY,
-      'anthropic-version': '2023-06-01',
-      'anthropic-beta': 'prompt-caching-2024-07-31',
-      'content-type': 'application/json',
+  const res = await fetchImpl(
+    `https://generativelanguage.googleapis.com/v1beta/models/${model}:streamGenerateContent?alt=sse`,
+    {
+      method: 'POST',
+      headers: {
+        'x-goog-api-key': env.GEMINI_API_KEY,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        systemInstruction: { parts: system.map(({ text }) => ({ text })) },
+        contents: [{ role: 'user', parts: [{ text: user }] }],
+        generationConfig: {
+          // Gemini counts thinking tokens against maxOutputTokens; keep the answer budget whole.
+          maxOutputTokens: template.maxTokens + THINKING_HEADROOM_TOKENS,
+          thinkingConfig: { thinkingLevel: model === 'gemini-3.5-flash-lite' ? 'minimal' : 'low' },
+        },
+      }),
     },
-    body: JSON.stringify({
-      model,
-      max_tokens: template.maxTokens,
-      stream: true,
-      output_config: { effort: 'low' },
-      system,
-      messages: [{ role: 'user', content: user }],
-    }),
-  });
+  );
 
   if (!res.ok || !res.body) {
     const errBody = await res.text();
-    logError({ message: 'anthropic messages failed', status: res.status, body: errBody.slice(0, 400) });
-    return errorJson('Anthropic request failed', 502, { status: res.status });
+    logError({ message: 'gemini answer request failed', status: res.status, body: errBody.slice(0, 400) });
+    if (res.status === 429) return errorJson('Gemini free-tier quota reached', 429);
+    return errorJson('Gemini answer request failed', 502, { status: res.status });
   }
 
-  return sseResponse(relayAnthropicStream(res.body, knownQuestion, extractQuestion));
+  return sseResponse(relayGeminiStream(res.body, knownQuestion, extractQuestion));
 }
 
 function sseResponse(body: ReadableStream<Uint8Array> | string): Response {
@@ -207,7 +209,7 @@ export function encodeSse(event: string, data: unknown): string {
   return `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
 }
 
-function relayAnthropicStream(
+function relayGeminiStream(
   body: ReadableStream<Uint8Array>,
   knownQuestion: string,
   extractQuestion: boolean,
@@ -230,66 +232,81 @@ function relayAnthropicStream(
       try {
         stream: while (true) {
           const { done, value } = await reader.read();
-          if (done) break;
-          buffer += decoder.decode(value, { stream: true });
-          const chunks = buffer.split('\n\n');
-          buffer = chunks.pop() ?? '';
+          // At the end, flush the decoder and parse a last event that has no trailing blank line.
+          buffer += done ? decoder.decode() : decoder.decode(value, { stream: true });
+          const chunks = buffer.split(/\r?\n\r?\n/);
+          buffer = done ? '' : chunks.pop() ?? '';
           for (const chunk of chunks) {
-            const dataLine = chunk.split('\n').find((l) => l.startsWith('data: '));
-            if (!dataLine) continue;
-            const payload = dataLine.slice(6).trim();
+            const payload = chunk.split(/\r?\n/)
+              .filter((line) => line.startsWith('data:'))
+              .map((line) => line.slice(5).trimStart())
+              .join('\n');
             if (!payload || payload === '[DONE]') continue;
             let parsed: {
-              type?: string;
-              error?: { type?: string; message?: string };
-              delta?: { type?: string; text?: string };
-              message?: { usage?: Record<string, number> };
-              usage?: Record<string, number>;
+              error?: { status?: string; message?: string };
+              promptFeedback?: { blockReason?: string };
+              candidates?: Array<{
+                finishReason?: string;
+                content?: { parts?: Array<{ text?: string; thought?: boolean }> };
+              }>;
+              usageMetadata?: Record<string, unknown>;
             };
             try {
               parsed = JSON.parse(payload) as typeof parsed;
             } catch {
               continue;
             }
-            if (parsed.type === 'error') {
-              throw new Error(parsed.error?.message || parsed.error?.type || 'Anthropic stream error');
+            if (parsed.error) {
+              throw new Error(parsed.error.message || parsed.error.status || 'Gemini stream error');
             }
-            if (parsed.type === 'message_stop') {
+            if (parsed.promptFeedback?.blockReason) {
+              throw new Error(`Gemini prompt blocked: ${parsed.promptFeedback.blockReason}`);
+            }
+            if (parsed.usageMetadata) {
+              usage = {};
+              for (const key of [
+                'promptTokenCount', 'candidatesTokenCount', 'thoughtsTokenCount',
+                'cachedContentTokenCount', 'totalTokenCount',
+              ]) {
+                const value = parsed.usageMetadata[key];
+                if (typeof value === 'number' && Number.isFinite(value)) usage[key] = value;
+              }
+            }
+            for (const candidate of parsed.candidates ?? []) {
+              if (!candidate.finishReason) continue;
+              if (candidate.finishReason !== 'STOP' && candidate.finishReason !== 'MAX_TOKENS') {
+                throw new Error(`Gemini answer stopped: ${candidate.finishReason}`);
+              }
               completed = true;
-              break stream;
             }
-            if (parsed.type === 'message_start' && parsed.message?.usage) {
-              usage = { ...usage, ...parsed.message.usage };
+            for (const part of parsed.candidates?.[0]?.content?.parts ?? []) {
+              if (part.thought || !part.text) continue;
+              const piece = part.text;
+              if (questionEmitted) {
+                send('token', { text: piece });
+                continue;
+              }
+              raw += piece;
+              const match = raw.match(/<<<QUESTION>>>([\s\S]*?)<<<END>>>/);
+              if (match) {
+                const question = match[1].trim();
+                questionEmitted = true;
+                send('question', { question });
+                const rest = raw.slice(match.index! + match[0].length);
+                if (rest) send('token', { text: rest });
+              } else if (!extractQuestion && raw.length > 400 && !raw.includes('<<<QUESTION>>>')) {
+                questionEmitted = true;
+                send('question', { question: '' });
+                send('token', { text: raw });
+              } else {
+                preamble = raw;
+              }
             }
-            if (parsed.type === 'message_delta' && parsed.usage) {
-              usage = { ...usage, ...parsed.usage };
-            }
-            if (parsed.type !== 'content_block_delta' || parsed.delta?.type !== 'text_delta' || !parsed.delta.text) {
-              continue;
-            }
-            const piece = parsed.delta.text;
-            if (questionEmitted) {
-              send('token', { text: piece });
-              continue;
-            }
-            raw += piece;
-            const match = raw.match(/<<<QUESTION>>>([\s\S]*?)<<<END>>>/);
-            if (match) {
-              const question = match[1].trim();
-              questionEmitted = true;
-              send('question', { question });
-              const rest = raw.slice(match.index! + match[0].length);
-              if (rest) send('token', { text: rest });
-            } else if (!extractQuestion && raw.length > 400 && !raw.includes('<<<QUESTION>>>')) {
-              questionEmitted = true;
-              send('question', { question: '' });
-              send('token', { text: raw });
-            } else {
-              preamble = raw;
-            }
+            if (completed) break stream;
           }
+          if (done) break;
         }
-        if (!completed) throw new Error('Anthropic stream ended before message_stop');
+        if (!completed) throw new Error('Gemini stream ended before finishReason');
         if (!questionEmitted && preamble) {
           send('question', { question: '' });
           send('token', { text: preamble });

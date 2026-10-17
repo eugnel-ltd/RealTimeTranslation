@@ -256,18 +256,18 @@ await run('PUT /api/profiles/james synthetic 25KB if empty', async () => {
   return `seeded bytes=${json.bytes}`;
 });
 
-await run('POST /api/answer claude-opus-5-5 TTFT', () => smokeAnswer('claude-opus-5-5'));
-await run('POST /api/answer claude-sonnet-5-5 TTFT', () => smokeAnswer('claude-sonnet-5-5'));
+await run('POST /api/answer gemini-3.8-flash TTFT', () => smokeAnswer('gemini-3.8-flash'));
+await run('POST /api/answer gemini-3.5-flash-lite TTFT', () => smokeAnswer('gemini-3.5-flash-lite'));
 
-await run('POST /api/answer opus profile cache write TTFT', async () => {
-  const r = await smokeAnswerRaw('claude-opus-5-5', { profileId: 'james' });
-  return `ttft=${r.ttft}ms cache_write=${r.usage.cache_creation_input_tokens ?? 0} cache_read=${r.usage.cache_read_input_tokens ?? 0}`;
+await run('POST /api/answer Gemini profile first request TTFT', async () => {
+  const r = await smokeAnswerRaw('gemini-3.8-flash', { profileId: 'james' });
+  return `ttft=${r.ttft}ms cached_tokens=${r.usage.cachedContentTokenCount ?? 0}`;
 });
 
-await run('POST /api/answer opus profile cache read TTFT', async () => {
+await run('POST /api/answer Gemini profile repeat request TTFT', async () => {
   await sleep(2000);
-  const r = await smokeAnswerRaw('claude-opus-5-5', { profileId: 'james' });
-  return `ttft=${r.ttft}ms cache_write=${r.usage.cache_creation_input_tokens ?? 0} cache_read=${r.usage.cache_read_input_tokens ?? 0}`;
+  const r = await smokeAnswerRaw('gemini-3.8-flash', { profileId: 'james' });
+  return `ttft=${r.ttft}ms cached_tokens=${r.usage.cachedContentTokenCount ?? 0}`;
 });
 
 const failed = results.filter((r) => !r.ok);

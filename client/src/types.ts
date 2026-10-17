@@ -29,7 +29,7 @@ export interface RecordingSession {
 export type SpeechEngineMode = 'auto' | 'azure' | 'gemini-translator' | 'gemini-live-translate';
 export type SplitLayout = 'transcript-left' | 'transcript-right' | 'transcript-top' | 'transcript-bottom';
 export type AnswerLanguage = 'same' | 'en' | 'yue' | 'zh-CN';
-export type AnswerModel = 'claude-opus-5-5' | 'claude-sonnet-5-5';
+export type AnswerModel = 'gemini-3.8-flash' | 'gemini-3.5-flash-lite';
 export type AnswerWindowSeconds = 90 | 120;
 export type CandidateProfileId = '' | 'james' | 'wing';
 

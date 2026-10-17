@@ -9,7 +9,6 @@ export interface WorkerEnv {
   GEMINI_TRANSLATE_MODEL: string;
   GEMINI_LIVE_TRANSCRIBE_MODEL: string;
   GEMINI_LIVE_TRANSLATE_MODEL: string;
-  ANTHROPIC_API_KEY?: string;
   TYPESAFE_API_KEY?: string;
   TYPESAFE_MODEL: string;
   ACCESS_AUD?: string;
