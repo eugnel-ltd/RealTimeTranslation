@@ -21,28 +21,42 @@ export class AzureSpeechService {
   private lastInterimResult: { text: string; translations: string[]; language?: string } | null = null;
   private refreshTimer: ReturnType<typeof setInterval> | null = null;
   private startedAt = 0;
+  private session = 0;
 
   constructor(private readonly callbacks: SpeechCallbacks) {}
 
   async startTranslation(config: TranslationConfig) {
-    if (this.isRecognizing) {
-      await this.stopTranslation();
-    }
+    const stopping = this.stopTranslation();
+    const session = this.session;
+    await stopping;
+    if (session !== this.session) return;
 
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
     stream.getTracks().forEach((track) => track.stop());
+    if (session !== this.session) return;
 
     const { token, region } = await fetchSpeechToken();
+    if (session !== this.session) return;
     const speechConfig = speechsdk.SpeechTranslationConfig.fromAuthorizationToken(token, region);
     this.applyLanguages(speechConfig, config);
     this.applyRecognitionProperties(speechConfig);
 
     const audioConfig = speechsdk.AudioConfig.fromDefaultMicrophoneInput();
-    this.translationRecognizer = new speechsdk.TranslationRecognizer(speechConfig, audioConfig);
-    this.setupRecognizer(this.translationRecognizer);
-    await new Promise<void>((resolve, reject) => {
-      this.translationRecognizer!.startContinuousRecognitionAsync(resolve, reject);
-    });
+    const recognizer = new speechsdk.TranslationRecognizer(speechConfig, audioConfig);
+    this.translationRecognizer = recognizer;
+    this.setupRecognizer(recognizer);
+    try {
+      await new Promise<void>((resolve, reject) => {
+        recognizer.startContinuousRecognitionAsync(resolve, reject);
+      });
+    } catch (err) {
+      if (session !== this.session) return;
+      this.translationRecognizer = null;
+      recognizer.close();
+      throw err;
+    }
+    // stopTranslation already disposed this session's recognizer.
+    if (session !== this.session) return;
     this.isRecognizing = true;
     this.startedAt = Date.now();
     this.scheduleTokenRefresh();
@@ -82,9 +96,12 @@ export class AzureSpeechService {
 
   private async refreshToken() {
     if (!this.translationRecognizer || !this.isRecognizing) return;
+    const recognizer = this.translationRecognizer;
+    const session = this.session;
     try {
       const { token } = await fetchSpeechToken();
-      this.translationRecognizer.authorizationToken = token;
+      if (session !== this.session) return;
+      recognizer.authorizationToken = token;
     } catch (err) {
       console.error('Failed to refresh Azure Speech token', err);
     }
@@ -131,21 +148,20 @@ export class AzureSpeechService {
   }
 
   async stopTranslation(): Promise<void> {
+    ++this.session;
     this.clearRefresh();
-    if (!this.translationRecognizer || !this.isRecognizing) return;
     const recognizer = this.translationRecognizer;
-    await new Promise<void>((resolve, reject) => {
-      recognizer.stopContinuousRecognitionAsync(
-        () => {
-          this.isRecognizing = false;
-          resolve();
-        },
-        (err) => {
-          this.isRecognizing = false;
-          reject(err);
-        },
-      );
-    });
+    this.translationRecognizer = null;
+    this.isRecognizing = false;
+    this.lastInterimResult = null;
+    if (!recognizer) return;
+    try {
+      await new Promise<void>((resolve, reject) => {
+        recognizer.stopContinuousRecognitionAsync(resolve, reject);
+      });
+    } finally {
+      recognizer.close();
+    }
   }
 
   private clearRefresh() {

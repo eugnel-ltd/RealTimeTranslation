@@ -77,6 +77,7 @@ const App: React.FC = () => {
   const prevShowAiAnswerRef = useRef(settings.showAiAnswer);
   const ignoreUntilFinalSigRef = useRef<string | null>(null);
   const answerAbortRef = useRef<AbortController | null>(null);
+  const answerGenerationRef = useRef(0);
 
   const detector: QuestionDetector = useMemo(
     () => createDebouncedDetector(new HttpQuestionDetector(), 400),
@@ -247,6 +248,7 @@ const App: React.FC = () => {
     }) => {
       if (!aiAnswerPanelRef.current) return;
       if (answeringRef.current && !opts.replace) return;
+      const generation = answerGenerationRef.current;
       const template = getSessionTemplate(settings.sessionTemplateId);
       let conversation = opts.conversation ?? conversationText();
       let question = (opts.question ?? '').trim();
@@ -279,6 +281,7 @@ const App: React.FC = () => {
             lastAnsweredQuestion: lastAnsweredRef.current,
             threshold: settings.questionThreshold,
           });
+          if (generation !== answerGenerationRef.current) return;
           segs = sliceFromQuestionStart(segs, start.segmentIndex);
           setDetectorNote(
             start.detector === 'jev' && start.segmentIndex != null
@@ -286,6 +289,7 @@ const App: React.FC = () => {
               : 'Full extract window (Jev start unavailable)',
           );
         } catch {
+          if (generation !== answerGenerationRef.current) return;
           setDetectorNote('Full extract window (Jev start unavailable)');
         }
         if (!aiAnswerPanelRef.current) return;
@@ -302,6 +306,8 @@ const App: React.FC = () => {
       if (question) setCurrentQuestion(question);
       else if (extractQuestion) setCurrentQuestion('');
       let assembled = '';
+      let completed = false;
+      let failed = false;
       answerAbortRef.current?.abort();
       const abort = new AbortController();
       answerAbortRef.current = abort;
@@ -323,7 +329,7 @@ const App: React.FC = () => {
             questionTimeLimitSeconds: settings.questionTimerSeconds || undefined,
           },
           (event, data) => {
-            if (abort.signal.aborted || !aiAnswerPanelRef.current) return;
+            if (abort.signal.aborted || generation !== answerGenerationRef.current || !aiAnswerPanelRef.current) return;
             if (event === 'skip') {
               setDetectorNote('No new interview question since the last answer.');
               return;
@@ -336,13 +342,16 @@ const App: React.FC = () => {
               assembled += String(data.text ?? '');
               setCurrentAnswer(assembled);
             }
+            if (event === 'done') completed = true;
             if (event === 'error') {
+              failed = true;
               setError(String(data.error ?? 'Answer stream error'));
             }
           },
           abort.signal,
         );
-        if (abort.signal.aborted || !aiAnswerPanelRef.current) return;
+        if (abort.signal.aborted || generation !== answerGenerationRef.current || !aiAnswerPanelRef.current) return;
+        if (!completed || failed) return;
         if (question && assembled.trim()) {
           lastAnsweredRef.current = question;
           lastAnsweredAtRef.current = Date.now();
@@ -363,12 +372,15 @@ const App: React.FC = () => {
           });
         }
       } catch (err) {
+        if (abort.signal.aborted || generation !== answerGenerationRef.current) return;
         if (err instanceof DOMException && err.name === 'AbortError') return;
         if (err instanceof Error && err.name === 'AbortError') return;
         setError(err instanceof Error ? err.message : 'Answer failed');
       } finally {
-        answeringRef.current = false;
-        setStreaming(false);
+        if (answerAbortRef.current === abort) {
+          answeringRef.current = false;
+          setStreaming(false);
+        }
       }
     },
     [
@@ -405,6 +417,7 @@ const App: React.FC = () => {
   const fireAutoAnswer = useCallback(
     (hintFromHit: string, replace = false) => {
       if (!aiAnswerPanelRef.current) return;
+      const generation = answerGenerationRef.current;
       clearSilenceTimer();
       void (async () => {
         if (!aiAnswerPanelRef.current) return;
@@ -449,6 +462,7 @@ const App: React.FC = () => {
           bStart = null;
         }
         if (!aiAnswerPanelRef.current) return;
+        if (generation !== answerGenerationRef.current) return;
         const startId = resolveExtractStart(bStart, lastAnsweredEndIdRef.current, newestId);
         const extractSegs = windowedSegments(startId);
         const plan = planAutoAnswer({
@@ -536,6 +550,7 @@ const App: React.FC = () => {
     ) {
       return;
     }
+    const generation = answerGenerationRef.current;
     const newest = all[all.length - 1];
     const newestId = newest.index;
     if (Date.now() < tailUntilRef.current && tailStartIdRef.current != null && newestId > (lastAnsweredEndIdRef.current ?? -1)) {
@@ -552,7 +567,7 @@ const App: React.FC = () => {
         threshold: settings.questionThreshold,
       })
       .then((result) => {
-        if (!aiAnswerPanelRef.current) return;
+        if (generation !== answerGenerationRef.current || !aiAnswerPanelRef.current) return;
         const hint = result.question?.trim() || newest.text.trim();
         const fingerprint = `a:${newestId}`;
         setDetectorNote(
@@ -580,7 +595,7 @@ const App: React.FC = () => {
         if (silenceTimerRef.current) return;
         silenceTimerRef.current = setTimeout(() => {
           silenceTimerRef.current = null;
-          if (!aiAnswerPanelRef.current) return;
+          if (generation !== answerGenerationRef.current || !aiAnswerPanelRef.current) return;
           const latest = sessionFinals().at(-1);
           const silent = confirmSilence(detectGateRef.current, {
             nowMs: Date.now(),
@@ -639,7 +654,32 @@ const App: React.FC = () => {
     }
   };
 
-  const handleClearTranscripts = () => setTranscripts([]);
+  const handleClearTranscripts = () => {
+    ++answerGenerationRef.current;
+    detector.cancel?.();
+    clearSilenceTimer();
+    answerAbortRef.current?.abort();
+    answerAbortRef.current = null;
+    answeringRef.current = false;
+    detectGateRef.current = createDetectGateState();
+    pendingAutoRef.current = { hint: '', newestId: null };
+    lastAnsweredRef.current = null;
+    lastAnsweredAtRef.current = null;
+    lastAnsweredStartIdRef.current = null;
+    lastAnsweredEndIdRef.current = null;
+    lastHintRef.current = null;
+    lastConversationRef.current = null;
+    tailUntilRef.current = 0;
+    tailStartIdRef.current = null;
+    ignoreUntilFinalSigRef.current = null;
+    transcriptsRef.current = [];
+    setTranscripts([]);
+    setCurrentQuestion('');
+    setCurrentAnswer('');
+    setDetectorNote(undefined);
+    setStreaming(false);
+    setTimerRunId(0);
+  };
 
   const handleSettingsUpdate = (next: UserSettings) => {
     const languageChanged =

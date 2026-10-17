@@ -3,6 +3,24 @@ import { buildAnswerSystemBlocks, handleAnswer, shouldSkipAnswer } from '../work
 import { mockEnv, mockFetch, mockKv, textResponse } from './helpers';
 
 describe('answer', () => {
+  it.each(['overload', 'truncated'])('reports %s after a text delta as error without done', async (failure) => {
+    const delta = 'event: content_block_delta\ndata: {"type":"content_block_delta","delta":{"type":"text_delta","text":"Partial answer"}}\n\n';
+    const error = 'event: error\ndata: {"type":"error","error":{"type":"overloaded_error","message":"Overloaded"}}\n\n';
+    const res = await handleAnswer(
+      new Request('https://rtt.eugnel.com/api/answer', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ question: 'Hello?', force: true }),
+      }),
+      mockEnv({ ANTHROPIC_API_KEY: 'sk' }),
+      mockFetch(() => new Response(delta + (failure === 'overload' ? error : ''))),
+    );
+    const text = await res.text();
+    expect(text).toContain('Partial answer');
+    expect(text).toContain('event: error');
+    expect(text).not.toContain('event: done');
+    if (failure === 'overload') expect(text).toContain('Overloaded');
+  });
+
   it('skips duplicate questions unless forced', () => {
     expect(shouldSkipAnswer('What is your stack?', 'what is your  stack?', false)).toBe(true);
     expect(shouldSkipAnswer('What is your stack?', 'what is your  stack?', true)).toBe(false);
@@ -76,6 +94,9 @@ describe('answer', () => {
       'event: content_block_delta',
       'data: {"type":"content_block_delta","delta":{"type":"text_delta","text":"I stay calm."}}',
       '',
+      'event: message_stop',
+      'data: {"type":"message_stop"}',
+      '',
       '',
     ].join('\n');
     const kv = mockKv({
@@ -123,6 +144,9 @@ describe('answer', () => {
       'event: content_block_delta',
       'data: {"type":"content_block_delta","delta":{"type":"text_delta","text":"ok"}}',
       '',
+      'event: message_stop',
+      'data: {"type":"message_stop"}',
+      '',
       '',
     ].join('\n');
     const fetchImpl = mockFetch((_url, init) => {
@@ -155,6 +179,9 @@ describe('answer', () => {
       'event: content_block_delta',
       'data: {"type":"content_block_delta","delta":{"type":"text_delta","text":"ok"}}',
       '',
+      'event: message_stop',
+      'data: {"type":"message_stop"}',
+      '',
       '',
     ].join('\n');
     const fetchImpl = mockFetch((_url, init) => {
@@ -185,6 +212,9 @@ describe('answer', () => {
       'event: content_block_delta',
       `data: ${JSON.stringify({ type: 'content_block_delta', delta: { type: 'text_delta', text: `${'x'.repeat(500)}<<<QUESTION>>>Preamble then part A and part B?<<<END>>>I would start with the outage.` } })}`,
       '',
+      'event: message_stop',
+      'data: {"type":"message_stop"}',
+      '',
       '',
     ].join('\n');
     const fetchImpl = mockFetch(() => new Response(sse, { headers: { 'Content-Type': 'text/event-stream' } }));
@@ -211,6 +241,9 @@ describe('answer', () => {
     const sse = [
       'event: content_block_delta',
       'data: {"type":"content_block_delta","delta":{"type":"text_delta","text":"ok"}}',
+      '',
+      'event: message_stop',
+      'data: {"type":"message_stop"}',
       '',
       '',
     ].join('\n');
@@ -265,6 +298,9 @@ describe('answer', () => {
           text: '<<<QUESTION>>>Moving on from that technical side, talk me through a migration and what you would do differently.<<<END>>>I would start with the rollback plan.',
         },
       })}`,
+      '',
+      'event: message_stop',
+      'data: {"type":"message_stop"}',
       '',
       '',
     ].join('\n');
