@@ -10,6 +10,21 @@ Do **not** put API keys in the client. The Vite bundle is served as Worker stati
 - API: `/api/*` runs the Worker first (`run_worker_first`)
 - `workers_dev: false` and `preview_urls: false` so no `workers.dev` / preview URL bypasses Access
 
+## Cost guard
+
+`wrangler.jsonc` limits each invocation to **5,000 ms CPU** and **50 subrequests**. CPU headroom supports the Gemini Live proxy; a request needs at most two provider fetches plus Access JWKS and KV operations, so 50 leaves wide room while still stopping a fetch loop. Logs stay enabled; traces are disabled.
+
+After Access authentication, budgets use the caller's Access email, then `CF-Connecting-IP`, then `unknown`:
+
+- `API_RATE_LIMIT` (`6001`): **300 requests per 60 seconds** across all `/api/*` routes.
+- `PAID_API_RATE_LIMIT` (`6002`): **120 requests per 60 seconds**, shared across speech-token, translate, gemini-token, gemini-live, detect-question and answer. This allows about 30 utterance translations, 60 detector checks and 30 requests for per-question answers, extraction and token/session renewals each minute.
+
+Refusals return JSON **429** with `Retry-After: 60`. Limiter errors return **503** before paid handlers run; non-paid routes remain available. Missing bindings are skipped for local development/tests.
+
+These guards do not impose a US$5 monthly cap. [Cloudflare rate limits](https://developers.cloudflare.com/workers/runtime-apis/bindings/rate-limit/) are approximate and local to each location. WebSockets are checked at the handshake; existing streams and issued provider tokens continue outside these request budgets.
+
+A person must set the account-wide backstops: [Google AI Studio monthly spend caps](https://ai.google.dev/gemini-api/docs/billing/) on all relevant projects, an organisation monthly spend limit in the [Anthropic console](https://platform.claude.com/docs/en/api/rate-limits), and an [Azure monthly budget with alerts](https://learn.microsoft.com/en-us/azure/cost-management-billing/costs/tutorial-acm-create-budgets) for Speech/Translator. Azure budgets alert rather than stop usage, so arrange a human response. Cover other apps sharing these accounts too.
+
 ## Secrets
 
 Set each with Wrangler (values are never printed back):

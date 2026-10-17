@@ -1,3 +1,5 @@
+import type { RateLimit } from '@cloudflare/workers-types';
+
 export interface WorkerEnv {
   AZURE_SPEECH_KEY?: string;
   AZURE_SPEECH_REGION: string;
@@ -14,6 +16,8 @@ export interface WorkerEnv {
   ACCESS_TEAM_DOMAIN: string;
   SKIP_ACCESS_CHECK: string;
   DEFAULT_ANSWER_MODEL: string;
+  API_RATE_LIMIT?: RateLimit;
+  PAID_API_RATE_LIMIT?: RateLimit;
   PROFILES?: KVNamespace;
   ASSETS: Fetcher;
 }
