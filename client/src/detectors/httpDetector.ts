@@ -1,7 +1,7 @@
 import { detectQuestion } from '../services/api';
 import type { QuestionDetector, QuestionDetectorInput, QuestionDetectorResult } from './types';
 
-/** Default detector: Worker Jev (TypeSafe System One), Claude fallback server-side. */
+/** Default detector: Worker Jev (TypeSafe System One), Gemini fallback server-side. */
 export class HttpQuestionDetector implements QuestionDetector {
   async detect(input: QuestionDetectorInput): Promise<QuestionDetectorResult> {
     const result = await detectQuestion({

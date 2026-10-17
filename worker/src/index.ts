@@ -74,8 +74,8 @@ async function routeApi(request: Request, env: WorkerEnv, url: URL): Promise<Res
   }
   if (pathname === '/api/config' && method === 'GET') {
     return json({
-      defaultAnswerModel: env.DEFAULT_ANSWER_MODEL || 'claude-opus-5-5',
-      models: ['claude-opus-5-5', 'claude-sonnet-5-5'],
+      defaultAnswerModel: env.DEFAULT_ANSWER_MODEL || 'gemini-3.8-flash',
+      models: ['gemini-3.8-flash', 'gemini-3.5-flash-lite'],
       templates: SESSION_TEMPLATES.map((t) => ({ id: t.id, label: t.label })),
     });
   }

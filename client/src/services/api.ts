@@ -59,7 +59,7 @@ export type DetectQuestionPayload = {
 };
 
 export type DetectQuestionResult = {
-  detector: 'jev' | 'claude' | 'unavailable';
+  detector: 'jev' | 'gemini' | 'unavailable';
   shouldAnswer: boolean;
   question: string | null;
   segmentIndex: number | null;

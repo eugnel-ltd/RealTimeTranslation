@@ -14,7 +14,7 @@ Findings P0–P3, each with `file:line`, posted on the PR as a comment with `VER
 
 Run all three, in order, against the PR's diff:
 
-1. **Bugs and logic:** correctness on real inputs (empty and missing values, languages and auto-detect, interim and final results, token expiry and refresh, WebSocket proxy close codes, retries and time-outs), failure behaviour when Azure, Gemini, Anthropic or Typesafe is down or slow, silent failures, and whether the regression test really fails on the old code.
+1. **Bugs and logic:** correctness on real inputs (empty and missing values, languages and auto-detect, interim and final results, token expiry and refresh, WebSocket proxy close codes, retries and time-outs), failure behaviour when Azure, Gemini or Typesafe is down or slow, silent failures, and whether the regression test really fails on the old code.
 2. **Security:** provider keys stay Worker secrets and never reach the client bundle; every `/api/*` route keeps the Cloudflare Access check; token endpoints return short-lived tokens only; untrusted input in prompts and KV profile writes; new dependencies.
 3. **Compliance:** the diff against the issue, `docs/code-standards.md`, `docs/owner-decisions.md` when it exists and `docs/north-star.md`. A diff that spends money without an `Expenditure:` decision fails this pass.
 

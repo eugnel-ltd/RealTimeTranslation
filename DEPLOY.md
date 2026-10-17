@@ -23,7 +23,7 @@ Refusals return JSON **429** with `Retry-After: 60`. Limiter errors return **503
 
 These guards do not impose a US$5 monthly cap. [Cloudflare rate limits](https://developers.cloudflare.com/workers/runtime-apis/bindings/rate-limit/) are approximate and local to each location. WebSockets are checked at the handshake; existing streams and issued provider tokens continue outside these request budgets.
 
-A person must set the account-wide backstops: [Google AI Studio monthly spend caps](https://ai.google.dev/gemini-api/docs/billing/) on all relevant projects, an organisation monthly spend limit in the [Anthropic console](https://platform.claude.com/docs/en/api/rate-limits), and an [Azure monthly budget with alerts](https://learn.microsoft.com/en-us/azure/cost-management-billing/costs/tutorial-acm-create-budgets) for Speech/Translator. Azure budgets alert rather than stop usage, so arrange a human response. Cover other apps sharing these accounts too.
+A person must set the account-wide backstops: [Google AI Studio monthly spend caps](https://ai.google.dev/gemini-api/docs/billing/) on all relevant projects, and an [Azure monthly budget with alerts](https://learn.microsoft.com/en-us/azure/cost-management-billing/costs/tutorial-acm-create-budgets) for Speech/Translator. Azure budgets alert rather than stop usage, so arrange a human response. Cover other apps sharing these accounts too. Answers run on the Gemini free tier. The free tier applies only when the Google project has no billing account linked; Google uses free-tier content to improve its products.
 
 ## Secrets
 
@@ -32,7 +32,6 @@ Set each with Wrangler (values are never printed back):
 ```bash
 npx wrangler secret put AZURE_SPEECH_KEY
 npx wrangler secret put GEMINI_API_KEY
-npx wrangler secret put ANTHROPIC_API_KEY
 npx wrangler secret put TYPESAFE_API_KEY
 # From the Cloudflare Zero Trust Access application named "RTT" (AUD / Application Audience).
 # Prefer a secret so it is not in wrangler.jsonc. A plaintext var of the same name also works.
@@ -44,8 +43,7 @@ npx wrangler secret put AZURE_TRANSLATOR_KEY
 | Secret | Used by |
 | --- | --- |
 | `AZURE_SPEECH_KEY` | `GET /api/speech-token` → Azure `issueToken` |
-| `GEMINI_API_KEY` | Gemini Live ephemeral tokens, Live proxy, and text translation when Translator is unset |
-| `ANTHROPIC_API_KEY` | `POST /api/answer` and Jev fallback question detection |
+| `GEMINI_API_KEY` | Answers, Jev fallback question detection, Gemini Live ephemeral tokens, Live proxy, and text translation when Translator is unset |
 | `TYPESAFE_API_KEY` | Default question detector (`POST /api/detect-question` → Jev `POST https://api.typesafe.ai/v1/systemone`) |
 | `ACCESS_AUD` | Access JWT audience from the **RTT** Access app. Required in production (`SKIP_ACCESS_CHECK=false`); missing/empty → `500 ACCESS_AUD not configured` on `/api/*` |
 | `AZURE_TRANSLATOR_KEY` | Optional. If set, `POST /api/translate` uses Azure Translator; otherwise Gemini `gemini-3.5-flash-lite` |
@@ -58,7 +56,7 @@ npx wrangler secret put AZURE_TRANSLATOR_KEY
 | `AZURE_TRANSLATOR_REGION` | Required only with `AZURE_TRANSLATOR_KEY` |
 | `ACCESS_TEAM_DOMAIN` | `https://eugnel.cloudflareaccess.com` |
 | `SKIP_ACCESS_CHECK` | `false` in production (and in `wrangler.jsonc`). `true` only in local `.dev.vars` |
-| `DEFAULT_ANSWER_MODEL` | `claude-opus-5-5` (`claude-sonnet-5-5` also allowed) |
+| `DEFAULT_ANSWER_MODEL` | `gemini-3.8-flash` (`gemini-3.5-flash-lite` also allowed) |
 | `GEMINI_TRANSLATE_MODEL` | `gemini-3.5-flash-lite` |
 | `GEMINI_LIVE_TRANSCRIBE_MODEL` | `gemini-3.5-transcribe-live` |
 | `GEMINI_LIVE_TRANSLATE_MODEL` | `gemini-3.5-live-translate-preview` |
@@ -91,7 +89,7 @@ npx wrangler deploy --dry-run # packaging check only
 npx wrangler deploy           # you run this with your Cloudflare token
 ```
 
-This environment has **no** Cloudflare/Azure/Gemini/Anthropic/TypeSafe keys. Do not deploy from the agent.
+This environment has **no** Cloudflare/Azure/Gemini/TypeSafe keys. Do not deploy from the agent.
 
 ## Local Worker + smoke script
 
@@ -114,7 +112,7 @@ If Access is enabled against the smoke target:
 SMOKE_ACCESS_JWT='<Cf-Access-Jwt-Assertion>' node scripts/smoke.mjs
 ```
 
-Replay a timestamped transcript through Jev A/B (and optionally Claude extract + answer):
+Replay a timestamped transcript through Jev A/B (and optionally Gemini extract + answer):
 
 ```bash
 node scripts/replay-transcript.mjs path/to/transcript.json
@@ -138,8 +136,8 @@ The smoke script checks:
 - `GET /api/profiles` (seed ids `james`, `wing`)
 - `GET /api/profiles/james` (bytes only; markdown is never printed)
 - `PUT /api/profiles/james` with a **synthetic ~25KB** profile **only when that key is empty** and the smoke target is localhost (or `SMOKE_SEED_PROFILE=1`)
-- `POST /api/answer` for `claude-opus-5-5` and `claude-sonnet-5-5`, including **time-to-first-token**
-- `POST /api/answer` with `profileId=james` twice: cache **write** then cache **read** TTFT (`cache_creation_input_tokens` / `cache_read_input_tokens`)
+- `POST /api/answer` for `gemini-3.8-flash` and `gemini-3.5-flash-lite`, including **time-to-first-token**
+- `POST /api/answer` with `profileId=james` twice: first and repeat request TTFT, reporting `cachedContentTokenCount` when Gemini implicitly caches the shared prefix
 
 ## Candidate profiles (Workers KV)
 
@@ -189,7 +187,7 @@ Or paste / upload `.md` / `.txt` in **Settings → Candidate profile** after dep
 | `GET` | `/api/profiles/:id` | `{ id, name, markdown }` |
 | `PUT` | `/api/profiles/:id` | `{ markdown, name? }` → `{ id, name, markdown, bytes }` (413 if over 200KiB) |
 
-`POST /api/answer` loads the selected profile **server-side** via `ProfileLoader` (`kvProfileLoader` today). The profile is a separate Anthropic system block with `cache_control: { type: "ephemeral" }` so a 20–30KB CV stays in the prompt cache; extra notes / role context sit **after** that block and do not bust the prefix. Swap `kvProfileLoader` for a retrieval memory (e.g. Hindsight) later without changing the client.
+`POST /api/answer` loads the selected profile **server-side** via `ProfileLoader` (`kvProfileLoader` today). Gemini uses implicit caching on a shared prompt prefix. The profile is its own `systemInstruction` part immediately after the static text; extra notes / role context sit **after** the profile so the shared prefix stays stable. Cache hits are reported as `cachedContentTokenCount`; they are not guaranteed. Swap `kvProfileLoader` for a retrieval memory (e.g. Hindsight) later without changing the client.
 
 Settings: **Candidate profile** = James / Wing / None (main source). The old CV textarea is **Extra notes (override)** in `localStorage` only.
 
@@ -206,9 +204,9 @@ Default: TypeSafe **Jev** (`jev-latest`, `POST /v1/systemone`). See `worker/src/
 - **Window:** last **90–120s** of transcript, capped at **~300 words**.
 - **(B) question start:** Choice over numbered segments `[1]…[N]`. Take the **earliest** segment whose **cumulative probability from segment 1 is ≥ 0.3** (not argmax). Used for manual Answer now and for auto-trigger extraction.
 
-If `TYPESAFE_API_KEY` is missing, auto-detect falls back to **Haiku** (not Opus). If Jev times out (~3s, one retry) or returns 429/5xx/529, the Worker pauses auto-detect for **20 seconds** (`unavailable`) instead of calling Opus on every debounce. The client `QuestionDetector` interface is the plug point for a later external service.
+If `TYPESAFE_API_KEY` is missing, auto-detect falls back to **Gemini `gemini-3.5-flash-lite`**. If Jev times out (~3s, one retry) or returns 429/5xx/529, the Worker pauses auto-detect for **20 seconds** (`unavailable`) instead of calling the fallback on every debounce. The client `QuestionDetector` interface is the plug point for a later external service.
 
-Manual **Answer now** posts `mode: "question-start"` so Jev can point at where the current question *starts* (preamble included). If Jev is unavailable, the client sends the full generous window (90–120s, or back to the previous answer, capped at 3 minutes) and Claude extracts. Extraction must include preamble and all sub-parts (never truncate).
+Manual **Answer now** posts `mode: "question-start"` so Jev can point at where the current question *starts* (preamble included). If Jev is unavailable, the client sends the full generous window (90–120s, or back to the previous answer, capped at 3 minutes) and Gemini extracts. Extraction must include preamble and all sub-parts (never truncate).
 
 ## Session templates
 

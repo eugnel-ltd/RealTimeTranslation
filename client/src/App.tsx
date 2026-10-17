@@ -184,7 +184,7 @@ const App: React.FC = () => {
   useEffect(() => {
     void fetchPublicConfig()
       .then((cfg) => {
-        if (cfg.defaultAnswerModel === 'claude-opus-5-5' || cfg.defaultAnswerModel === 'claude-sonnet-5-5') {
+        if (cfg.defaultAnswerModel === 'gemini-3.8-flash' || cfg.defaultAnswerModel === 'gemini-3.5-flash-lite') {
           setSettings((prev) => {
             if (prev.answerModel) return prev;
             const next = { ...prev, answerModel: cfg.defaultAnswerModel as UserSettings['answerModel'] };

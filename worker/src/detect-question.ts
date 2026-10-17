@@ -36,7 +36,7 @@ export type DetectQuestionBody = {
 };
 
 export type DetectQuestionResult = {
-  detector: 'jev' | 'claude' | 'unavailable';
+  detector: 'jev' | 'gemini' | 'unavailable';
   shouldAnswer: boolean;
   question: string | null;
   segmentIndex: number | null;
@@ -47,9 +47,9 @@ export type DetectQuestionResult = {
   fallbackReason?: string;
 };
 
-/** Short pause after Jev timeout/transient. Do not fall back to Opus on every debounce. */
+/** Short pause after Jev timeout/transient. Do not call the fallback on every debounce. */
 const JEV_COOLDOWN_MS = 20_000;
-const DETECT_FALLBACK_MODEL = 'claude-haiku-4-5';
+const DETECT_FALLBACK_MODEL = 'gemini-3.5-flash-lite';
 let jevUnavailableUntil = 0;
 
 export function resetJevCooldown(): void {
@@ -116,7 +116,7 @@ export async function handleDetectQuestion(
   if (reason === 'jev_cooldown' || mode === 'question-start') {
     return json(pauseDetect(mode, reason));
   }
-  return json(await detectWithHaikuOrEmpty(env, segments, lastAnswered, reason, fetchImpl));
+  return json(await detectWithGeminiOrEmpty(env, segments, lastAnswered, reason, fetchImpl));
 }
 
 function pauseDetect(mode: DetectMode, fallbackReason: string): DetectQuestionResult {
@@ -289,14 +289,14 @@ async function detectWithJev(
   };
 }
 
-async function detectWithHaikuOrEmpty(
+async function detectWithGeminiOrEmpty(
   env: WorkerEnv,
   segments: DetectSegment[],
   lastAnswered: string,
   fallbackReason: string,
   fetchImpl: typeof fetch,
 ): Promise<DetectQuestionResult> {
-  if (!env.ANTHROPIC_API_KEY) {
+  if (!env.GEMINI_API_KEY) {
     return {
       detector: 'unavailable',
       shouldAnswer: false,
@@ -307,56 +307,60 @@ async function detectWithHaikuOrEmpty(
     };
   }
   try {
-    const result = await detectWithHaiku(env, segments, lastAnswered, fetchImpl);
+    const result = await detectWithGemini(env, segments, lastAnswered, fetchImpl);
     return { ...result, fallbackReason };
   } catch (err) {
-    logError({ message: 'haiku detect failed', error: err instanceof Error ? err.message : String(err) });
+    logError({ message: 'gemini detect failed', error: err instanceof Error ? err.message : String(err) });
     return {
       detector: 'unavailable',
       shouldAnswer: false,
       question: null,
       segmentIndex: null,
       probabilities: { newQuestionFromOtherParty: null, isInterviewQuestion: null },
-      fallbackReason: `${fallbackReason}+claude_error`,
+      fallbackReason: `${fallbackReason}+gemini_error`,
     };
   }
 }
 
-async function detectWithHaiku(
+async function detectWithGemini(
   env: WorkerEnv,
   segments: DetectSegment[],
   lastAnswered: string,
   fetchImpl: typeof fetch,
 ): Promise<DetectQuestionResult> {
   const numbered = segments.map((s) => `[${s.index}] ${s.text}`).join('\n');
-  const res = await fetchImpl('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: {
-      'x-api-key': env.ANTHROPIC_API_KEY as string,
-      'anthropic-version': '2023-06-01',
-      'content-type': 'application/json',
-    },
-    body: JSON.stringify({
-      model: DETECT_FALLBACK_MODEL,
-      max_tokens: 256,
-      output_config: { effort: 'low' },
-      system:
-        'Return JSON only with keys question (string|null), segment_index (number|null), is_new (boolean), is_interview_question (boolean). Extract the newest interviewer question for a live job interview.',
-      messages: [
-        {
-          role: 'user',
-          content: `already_answered_question: ${JSON.stringify(lastAnswered || null)}\nsegments:\n${numbered}`,
+  const res = await fetchImpl(
+    `https://generativelanguage.googleapis.com/v1beta/models/${DETECT_FALLBACK_MODEL}:generateContent`,
+    {
+      method: 'POST',
+      headers: {
+        'x-goog-api-key': env.GEMINI_API_KEY as string,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        systemInstruction: {
+          parts: [{
+            text: 'Return JSON only with keys question (string|null), segment_index (number|null), is_new (boolean), is_interview_question (boolean). Extract the newest interviewer question for a live job interview.',
+          }],
         },
-      ],
-    }),
-  });
-  if (!res.ok) {
-    throw new Error(`anthropic ${res.status}`);
-  }
+        contents: [{
+          role: 'user',
+          parts: [{ text: `already_answered_question: ${JSON.stringify(lastAnswered || null)}\nsegments:\n${numbered}` }],
+        }],
+        generationConfig: {
+          responseMimeType: 'application/json',
+          thinkingConfig: { thinkingLevel: 'minimal' },
+          maxOutputTokens: 256,
+        },
+      }),
+    },
+  );
+  if (!res.ok) throw new Error(`gemini ${res.status}`);
   const data = (await res.json()) as {
-    content?: Array<{ type?: string; text?: string }>;
+    candidates?: Array<{ content?: { parts?: Array<{ text?: string; thought?: boolean }> } }>;
   };
-  const text = data.content?.find((c) => c.type === 'text')?.text ?? '';
+  const text = data.candidates?.[0]?.content?.parts
+    ?.filter((part) => !part.thought).map((part) => part.text ?? '').join('') ?? '';
   const parsed = JSON.parse(extractJson(text)) as {
     question?: string | null;
     segment_index?: number | null;
@@ -366,7 +370,7 @@ async function detectWithHaiku(
   const question = parsed.question?.trim() || null;
   const shouldAnswer = Boolean(parsed.is_new && parsed.is_interview_question && question);
   return {
-    detector: 'claude',
+    detector: 'gemini',
     shouldAnswer,
     question: shouldAnswer ? question : null,
     segmentIndex: typeof parsed.segment_index === 'number' ? parsed.segment_index : null,

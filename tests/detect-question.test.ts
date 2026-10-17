@@ -148,15 +148,20 @@ describe('detect-question', () => {
     expect(body.question).toBeNull();
   });
 
-  it('falls back to Haiku when TYPESAFE_API_KEY is missing', async () => {
+  it('falls back to Gemini when TYPESAFE_API_KEY is missing', async () => {
     const fetchImpl = mockFetch((url, init) => {
-      expect(url).toContain('api.anthropic.com');
-      const body = JSON.parse(String(init?.body ?? '{}')) as { model?: string };
-      expect(body.model).toBe('claude-haiku-4-5');
+      expect(url).toBe('https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent');
+      expect(init?.method).toBe('POST');
+      expect(new Headers(init?.headers).get('x-goog-api-key')).toBe('sk');
+      const body = JSON.parse(String(init?.body ?? '{}'));
+      expect(body.systemInstruction.parts[0].text).toContain('Return JSON only with keys question');
+      expect(body.contents[0].role).toBe('user');
+      expect(body.contents[0].parts[0].text).toContain('[1] Tell me about a production incident you owned.');
+      expect(body.generationConfig).toEqual({ responseMimeType: 'application/json', thinkingConfig: { thinkingLevel: 'minimal' }, maxOutputTokens: 256 });
       return jsonResponse({
-        content: [
+        candidates: [{ content: { parts: [
+          { text: 'Private reasoning', thought: true },
           {
-            type: 'text',
             text: JSON.stringify({
               question: 'Tell me about a production incident you owned.',
               segment_index: 1,
@@ -164,32 +169,32 @@ describe('detect-question', () => {
               is_interview_question: true,
             }),
           },
-        ],
+        ] } }],
       });
     });
     const res = await handleDetectQuestion(
       post({ segments }),
-      mockEnv({ ANTHROPIC_API_KEY: 'sk' }),
+      mockEnv({ GEMINI_API_KEY: 'sk' }),
       fetchImpl,
     );
     const body = (await res.json()) as { detector: string; fallbackReason?: string; shouldAnswer: boolean };
-    expect(body.detector).toBe('claude');
+    expect(body.detector).toBe('gemini');
     expect(body.fallbackReason).toBe('typesafe_unconfigured');
     expect(body.shouldAnswer).toBe(true);
   });
 
-  it('retries Jev once then pauses auto-detect with a short cooldown (no Opus)', async () => {
+  it('retries Jev once then pauses auto-detect with a short cooldown without calling Gemini', async () => {
     let typesafeCalls = 0;
-    let anthropicCalls = 0;
+    let geminiCalls = 0;
     const fetchImpl = mockFetch((url) => {
       if (url.includes('typesafe.ai')) {
         typesafeCalls += 1;
         return textResponse('rate limited', 429);
       }
-      anthropicCalls += 1;
-      return textResponse('should not call opus', 500);
+      geminiCalls += 1;
+      return textResponse('should not call Gemini', 500);
     });
-    const env = mockEnv({ TYPESAFE_API_KEY: 'ts', ANTHROPIC_API_KEY: 'sk' });
+    const env = mockEnv({ TYPESAFE_API_KEY: 'ts', GEMINI_API_KEY: 'sk' });
     const first = (await (await handleDetectQuestion(post({ segments }), env, fetchImpl, 1_000)).json()) as {
       detector: string;
       fallbackReason?: string;
@@ -199,12 +204,12 @@ describe('detect-question', () => {
     expect(first.shouldAnswer).toBe(false);
     expect(first.fallbackReason).toBe('jev_transient');
     expect(typesafeCalls).toBe(2);
-    expect(anthropicCalls).toBe(0);
+    expect(geminiCalls).toBe(0);
     const second = (await (await handleDetectQuestion(post({ segments }), env, fetchImpl, 1_000 + 5_000)).json()) as {
       fallbackReason?: string;
     };
     expect(second.fallbackReason).toBe('jev_cooldown');
-    expect(anthropicCalls).toBe(0);
+    expect(geminiCalls).toBe(0);
   });
 
   it('auto mode returns the B start-segment text as a hint, not the joined question', async () => {
@@ -268,11 +273,37 @@ describe('detect-question', () => {
     const res = await handleDetectQuestion(
       post({ segments, mode: 'question-start' }),
       mockEnv({ TYPESAFE_API_KEY: undefined }),
-      mockFetch(() => textResponse('should not call claude', 500)),
+      mockFetch(() => textResponse('should not call Gemini', 500)),
     );
     const body = (await res.json()) as { segmentIndex: number | null; fallbackReason?: string; shouldAnswer: boolean };
     expect(body.shouldAnswer).toBe(false);
     expect(body.segmentIndex).toBeNull();
     expect(body.fallbackReason).toBe('typesafe_unconfigured');
   });
+  it('returns unavailable without a Gemini key and does not call upstream', async () => {
+    let calls = 0;
+    const res = await handleDetectQuestion(post({ segments }), mockEnv(), mockFetch(() => {
+      calls += 1;
+      return textResponse('unexpected request', 500);
+    }));
+    expect(await res.json()).toMatchObject({
+      detector: 'unavailable', shouldAnswer: false, question: null,
+      fallbackReason: 'typesafe_unconfigured',
+    });
+    expect(calls).toBe(0);
+  });
+
+  it.each(['http', 'invalid-json', 'blocked', 'network'])('fails safely when Gemini returns %s', async (failure) => {
+    const res = await handleDetectQuestion(post({ segments }), mockEnv({ GEMINI_API_KEY: 'sk' }), mockFetch(() => {
+      if (failure === 'network') throw new Error('network unavailable');
+      if (failure === 'http') return textResponse('rate limited', 429);
+      if (failure === 'blocked') return jsonResponse({ promptFeedback: { blockReason: 'SAFETY' } });
+      return jsonResponse({ candidates: [{ content: { parts: [{ text: 'not JSON' }] } }] });
+    }));
+    expect(await res.json()).toMatchObject({
+      detector: 'unavailable', shouldAnswer: false, question: null,
+      fallbackReason: 'typesafe_unconfigured+gemini_error',
+    });
+  });
+
 });

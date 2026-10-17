@@ -34,7 +34,7 @@ export function mockEnv(overrides: Partial<WorkerEnv> = {}): WorkerEnv {
     ACCESS_AUD: 'test-aud',
     ACCESS_TEAM_DOMAIN: 'https://eugnel.cloudflareaccess.com',
     SKIP_ACCESS_CHECK: 'true',
-    DEFAULT_ANSWER_MODEL: 'claude-opus-5-5',
+    DEFAULT_ANSWER_MODEL: 'gemini-3.8-flash',
     GEMINI_TRANSLATE_MODEL: 'gemini-3.5-flash-lite',
     GEMINI_LIVE_TRANSCRIBE_MODEL: 'gemini-3.5-transcribe-live',
     GEMINI_LIVE_TRANSLATE_MODEL: 'gemini-3.5-live-translate-preview',

@@ -318,8 +318,8 @@ const Settings: React.FC<SettingsProps> = ({ isOpen, onClose, initialSettings, o
                     onChange={(e) => patch({ answerModel: e.target.value as AnswerModel })}
                     className="w-full px-3 py-2 rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
                   >
-                    <option value="claude-opus-5-5">claude-opus-5-5</option>
-                    <option value="claude-sonnet-5-5">claude-sonnet-5-5</option>
+                    <option value="gemini-3.8-flash">gemini-3.8-flash</option>
+                    <option value="gemini-3.5-flash-lite">gemini-3.5-flash-lite</option>
                   </select>
                 </div>
                 <div>

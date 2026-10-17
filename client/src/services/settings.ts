@@ -35,6 +35,9 @@ export class SettingsService {
     this.currentSettings = {
       ...this.getDefaultSettings(),
       ...rest,
+      answerModel: parsed.answerModel === 'gemini-3.8-flash' || parsed.answerModel === 'gemini-3.5-flash-lite'
+        ? parsed.answerModel
+        : 'gemini-3.8-flash',
       extraNotes: parsed.extraNotes ?? cvBackground ?? '',
       profileId: parsed.profileId === 'james' || parsed.profileId === 'wing' ? parsed.profileId : '',
       sessionTemplateId,
@@ -67,7 +70,7 @@ export class SettingsService {
       speechEngine: 'auto',
       splitLayout: 'transcript-left',
       answerWindowSeconds: 120,
-      answerModel: 'claude-opus-5-5',
+      answerModel: 'gemini-3.8-flash',
       answerLanguage: 'same',
       userContext: '',
       extraNotes: '',
