@@ -18,6 +18,7 @@ export class GeminiSpeechService {
   private source: MediaStreamAudioSourceNode | null = null;
   private mediaStream: MediaStream | null = null;
   private running = false;
+  private session = 0;
   private config: TranslationConfig | null = null;
   private mode: GeminiMode = 'transcribe';
   private interimInput = '';
@@ -27,18 +28,24 @@ export class GeminiSpeechService {
   constructor(private readonly callbacks: SpeechCallbacks) {}
 
   async start(config: TranslationConfig, mode: GeminiMode) {
-    await this.stop();
+    const stopping = this.stop();
+    const session = this.session;
+    await stopping;
+    if (session !== this.session) return;
     this.config = config;
     this.mode = mode;
     this.running = true;
-    await this.openSession();
+    await this.openSession(session);
   }
 
-  private async openSession() {
-    if (!this.config || !this.running) return;
+  private async openSession(session: number) {
+    if (!this.config || !this.running || session !== this.session) return;
     const token = await this.mintToken();
-    await this.openSocket(token);
-    await this.startMic();
+    if (session !== this.session) return;
+    await this.openSocket(token, session);
+    if (session !== this.session) return;
+    await this.startMic(session);
+    if (session !== this.session) return;
     this.scheduleReconnect();
   }
 
@@ -61,21 +68,29 @@ export class GeminiSpeechService {
     }
   }
 
-  private openSocket(token: GeminiToken): Promise<void> {
+  private openSocket(token: GeminiToken, session: number): Promise<void> {
     const url = token.wsUrl || toWsUrl(token.proxyUrl);
     return new Promise((resolve, reject) => {
       const ws = new WebSocket(url);
       this.ws = ws;
       let opened = false;
       ws.onopen = () => {
+        if (session !== this.session) {
+          ws.close();
+          resolve();
+          return;
+        }
         opened = true;
         ws.send(JSON.stringify({ setup: this.setupMessage() }));
         resolve();
       };
       ws.onerror = () => {
-        if (!opened) reject(new Error('Gemini Live WebSocket failed'));
+        if (session !== this.session) resolve();
+        else if (!opened) reject(new Error('Gemini Live WebSocket failed'));
       };
       ws.onclose = (event) => {
+        if (session !== this.session) { resolve(); return; }
+        if (!opened) reject(new Error('Gemini Live WebSocket closed before opening'));
         if (this.running) {
           const detail = event.reason ? `${event.code}: ${event.reason}` : String(event.code);
           this.callbacks.onError(`Gemini Live connection closed (${detail})`);
@@ -98,8 +113,13 @@ export class GeminiSpeechService {
     return geminiLiveSetup('transcribe', 'gemini-3.5-transcribe-live');
   }
 
-  private async startMic() {
-    this.mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  private async startMic(session: number) {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    if (session !== this.session) {
+      stream.getTracks().forEach((track) => track.stop());
+      return;
+    }
+    this.mediaStream = stream;
     this.audioContext = new AudioContext();
     this.source = this.audioContext.createMediaStreamSource(this.mediaStream);
     this.processor = this.audioContext.createScriptProcessor(4096, 1, 1);
@@ -190,15 +210,17 @@ export class GeminiSpeechService {
   }
 
   private async recycle() {
+    const session = this.session;
     this.teardownSocketAndMic();
     try {
-      await this.openSession();
+      await this.openSession(session);
     } catch (err) {
-      this.callbacks.onError(err instanceof Error ? err.message : 'Gemini reconnect failed');
+      if (session === this.session) this.callbacks.onError(err instanceof Error ? err.message : 'Gemini reconnect failed');
     }
   }
 
   async stop() {
+    ++this.session;
     this.running = false;
     if (this.reconnectTimer) {
       clearTimeout(this.reconnectTimer);

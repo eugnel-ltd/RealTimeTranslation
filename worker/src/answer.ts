@@ -219,6 +219,7 @@ function relayAnthropicStream(
   let questionEmitted = Boolean(knownQuestion);
   let preamble = '';
   let usage: Record<string, number> = {};
+  let completed = false;
 
   return new ReadableStream({
     async start(controller) {
@@ -227,7 +228,7 @@ function relayAnthropicStream(
 
       const reader = body.getReader();
       try {
-        while (true) {
+        stream: while (true) {
           const { done, value } = await reader.read();
           if (done) break;
           buffer += decoder.decode(value, { stream: true });
@@ -240,6 +241,7 @@ function relayAnthropicStream(
             if (!payload || payload === '[DONE]') continue;
             let parsed: {
               type?: string;
+              error?: { type?: string; message?: string };
               delta?: { type?: string; text?: string };
               message?: { usage?: Record<string, number> };
               usage?: Record<string, number>;
@@ -248,6 +250,13 @@ function relayAnthropicStream(
               parsed = JSON.parse(payload) as typeof parsed;
             } catch {
               continue;
+            }
+            if (parsed.type === 'error') {
+              throw new Error(parsed.error?.message || parsed.error?.type || 'Anthropic stream error');
+            }
+            if (parsed.type === 'message_stop') {
+              completed = true;
+              break stream;
             }
             if (parsed.type === 'message_start' && parsed.message?.usage) {
               usage = { ...usage, ...parsed.message.usage };
@@ -280,6 +289,7 @@ function relayAnthropicStream(
             }
           }
         }
+        if (!completed) throw new Error('Anthropic stream ended before message_stop');
         if (!questionEmitted && preamble) {
           send('question', { question: '' });
           send('token', { text: preamble });
@@ -290,6 +300,9 @@ function relayAnthropicStream(
       } catch (err) {
         send('error', { error: err instanceof Error ? err.message : String(err) });
         controller.close();
+      } finally {
+        await reader.cancel().catch(() => undefined);
+        reader.releaseLock();
       }
     },
   });
