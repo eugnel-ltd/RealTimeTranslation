@@ -9,6 +9,15 @@ import { handleGetProfile, handleListProfiles, handlePutProfile } from './profil
 import { handleSpeechToken } from './speech-token';
 import { handleTranslate } from './translate';
 
+const PAID_API_PATHS = new Set([
+  '/api/speech-token',
+  '/api/translate',
+  '/api/gemini-token',
+  '/api/gemini-live',
+  '/api/detect-question',
+  '/api/answer',
+]);
+
 export default {
   async fetch(request: Request, env: WorkerEnv): Promise<Response> {
     const url = new URL(request.url);
@@ -16,6 +25,8 @@ export default {
       if (isApiPath(url.pathname)) {
         const denied = await requireAccess(request, env);
         if (denied) return denied;
+        const limited = await checkRateLimits(request, env, url.pathname);
+        if (limited) return limited;
         return await routeApi(request, env, url);
       }
       return env.ASSETS.fetch(request);
@@ -29,6 +40,29 @@ export default {
     }
   },
 };
+
+async function checkRateLimits(request: Request, env: WorkerEnv, pathname: string): Promise<Response | null> {
+  const paid = PAID_API_PATHS.has(pathname);
+  const key = request.headers.get('Cf-Access-Authenticated-User-Email')
+    || request.headers.get('CF-Connecting-IP')
+    || 'unknown';
+
+  try {
+    for (const limiter of [env.API_RATE_LIMIT, paid ? env.PAID_API_RATE_LIMIT : undefined]) {
+      if (!limiter) continue;
+      const { success } = await limiter.limit({ key });
+      if (!success) {
+        const response = errorJson('Too many requests', 429);
+        response.headers.set('Retry-After', '60');
+        return response;
+      }
+    }
+  } catch {
+    logError({ message: 'rate limiter unavailable', path: pathname });
+    if (paid) return errorJson('Rate limiter unavailable', 503);
+  }
+  return null;
+}
 
 async function routeApi(request: Request, env: WorkerEnv, url: URL): Promise<Response> {
   const { pathname } = url;
