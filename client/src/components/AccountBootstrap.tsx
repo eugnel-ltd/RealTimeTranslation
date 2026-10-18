@@ -20,10 +20,10 @@ export default function AccountBootstrap() {
   const [returned, setReturned] = useState({ code: false, failed: false });
   useEffect(() => {
     let channel: BroadcastChannel | null = null;
-    if (typeof BroadcastChannel !== 'undefined') channel = new BroadcastChannel('rtt_account_change');
+    try { if (typeof BroadcastChannel !== 'undefined') channel = new BroadcastChannel('rtt_account_change'); } catch { /* Storage hints and focus verification remain available. */ }
     const announce = () => {
       const nonce = globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random()}`;
-      channel?.postMessage({ change: nonce });
+      try { channel?.postMessage({ change: nonce }); } catch { /* Storage hints and focus verification remain available. */ }
       try { localStorage.setItem(HINT_KEY, nonce); } catch { /* Broadcast or focus verification remains available. */ }
     };
     const manager = new AccountBrowser(window.location.origin, announce);

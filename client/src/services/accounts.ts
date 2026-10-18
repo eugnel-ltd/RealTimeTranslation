@@ -61,8 +61,9 @@ export function parseDeletion(value: unknown): DeletionReceipt {
 
 /** Auth mutations intentionally do not use an account's revoked request lifetime. */
 export async function accountRequest(path: string, body?: Record<string, unknown>, signal?: AbortSignal): Promise<unknown> {
+  const deadline = AbortSignal.timeout(15_000);
   const response = await fetch(path, {
-    credentials: 'include', cache: 'no-store', signal,
+    credentials: 'include', cache: 'no-store', signal: signal ? AbortSignal.any([signal, deadline]) : deadline,
     ...(body ? { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) } : {}),
   });
   let data: unknown;
