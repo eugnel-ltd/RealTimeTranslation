@@ -58,7 +58,7 @@ The repository contains two separate applications with different tech stacks:
 3. Required Python packages (see requirements.txt)
 
 ### For Web Application
-1. Node.js (v18 or higher recommended)
+1. Node.js 22 or 24 and later (the package engine ranges exclude Node.js 23)
 2. npm or yarn package manager
 3. Azure Cognitive Services Speech account
 
