@@ -16,7 +16,7 @@
   "support": "rtt@eugnel.uk",
   "privacyContact": "hello@eugnel.com",
   "policyPaths": ["/legal/privacy", "/legal/terms", "/legal/refunds", "/legal/data-use"],
-  "policyStatus": "Implementation tracked in issue #9; these paths are not evidence of a live deployment.",
+  "policyStatus": "Functional legal delivery merged in PR #47; these paths are not evidence of a live deployment.",
   "releaseNote": "releases/1.0.0.md",
   "releaseStatus": "unreleased",
   "whatsNew": "Repeated transcript lines remain in saved history, and recording sessions handle cancellation more reliably. Question extraction can use the full selected transcript window, and the initial browser download loads the speech SDK only when needed.",
@@ -24,5 +24,11 @@
     "source": "local production build with synthetic data; not a live release",
     "files": ["screenshots/desktop-session.png", "screenshots/desktop-history.png", "screenshots/mobile-session.png", "screenshots/mobile-history.png"]
   },
-  "icon": null
+  "icon": {
+    "file": "assets/microphone.svg",
+    "description": "Existing generic microphone glyph, reused unchanged from Heroicons v2.2.0; not a custom RTT brand mark.",
+    "license": "MIT",
+    "notice": "assets/HEROICONS-LICENSE.txt",
+    "provenance": "../../provenance/listing-icon.json"
+  }
 }
