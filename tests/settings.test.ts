@@ -38,3 +38,16 @@ describe('saved answer model settings', () => {
     expect((await loadSettings({ answerModel })).answerModel).toBe(answerModel);
   });
 });
+
+describe('explicit browser-history choice', () => {
+  it.each([null, {}, { saveTranscriptHistory: false }, { saveTranscriptHistory: 'true' }, { saveTranscriptHistory: 1 }])(
+    'does not infer consent from absent or invalid settings %j', async (saved) => {
+      expect((await loadSettings(saved)).saveTranscriptHistory).toBe(false);
+    },
+  );
+  it('preserves a positive history choice and existing notes', async () => {
+    const settings = await loadSettings({ saveTranscriptHistory: true, extraNotes: 'Keep existing notes' });
+    expect(settings.saveTranscriptHistory).toBe(true);
+    expect(settings.extraNotes).toBe('Keep existing notes');
+  });
+});
