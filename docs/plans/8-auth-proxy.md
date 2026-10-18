@@ -1,0 +1,15 @@
+# RTT8 same-origin identity adapter
+
+This completes the auth proxy slice of the full shared identity plan independently accepted by the root orchestrator before source implementation (`eugnel-platform` accepted plan/spec commitb853bdb). The product-data peer owns the account/session context and profile eraser; this slice owns only `worker/src/accountAuth.ts`, its route dispatch after existing Access/rate checks, and dedicated regressions. No visual design or live configuration changes.
+
+Forward fixed same-origin auth/account paths through the reviewed signed `eugnel-platform/auth/identity` client. Capture configured origin and product binding before awaiting; never forward browser account headers or Cloudflare Access credentials. Limit bodies to4KiB, consume within5seconds and use the shared client's full-response deadline. Unknown outcomes remain unavailable rather than proving cancellation/completion.
+
+Preserve only scoped opaque identity cookies and known provider/fixed-origin redirects. Validate returned bootstrap scope; keep misconfiguration503, signed-out paid routes401, and exact off-mode `{enabled:false}` without inspecting customer bindings. Provider callback Access remains unchanged; actual edge cookie/policy acceptance is a live proof, not an inferred bypass.
+
+First-red `fabda20` freezes nine actual Worker-router regressions after Worker/test typechecks and the canonical added-line secret scan. The old router has eight meaningful missing-route failures and the existing Access-first case passes. A temporary packed shared packagea2f0c07 includes current legal1c50 but is not a final dependency pin; the final reviewed merged package must include the complete provider module tree before packaging/release.
+
+Run focused regressions, full web/desktop/enforcement tests, types/lint/build and real Worker dry packaging on the final combined consumer. Root independently reviews the exact integrated head. Preserve every server/client peer's frozen regression bytes and the existing history opt-in/generation semantics. Baseline accounts remain missing until actual configured signup/signin/deletion/isolation acceptance succeeds.
+
+## Mechanical prepublication test rebaseline
+
+The original peer branch and frozen `fabda20` remain intact. Integration ran the complete lint command and found its sole unused `WorkerEnv` type import at test line 3. Root approved preserving that history and creating this fresh final branch from `0491c13`, which already contains the unchanged 48 frozen server tests and source. Before this branch's replacement first-red commit, remove only that unused import from the proxy test; preserve every assertion, runtime value and test case. Run the actual eight failures/one Access control on the old router, Worker/test/client types, lint and trusted added-line secret scan before freezing. Apply the identical reviewed `01079ae` proxy source afterward. This corrects static validity before the new freeze and does not bypass a frozen assertion.
