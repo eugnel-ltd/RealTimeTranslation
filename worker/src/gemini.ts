@@ -1,6 +1,6 @@
 import { geminiLiveSetup, type GeminiLiveMode } from '../../shared/geminiLive';
 import type { WorkerEnv } from './env';
-import { errorJson, isString, json, logError, readJson } from './http';
+import { errorJson, isJsonObject, isString, json, logError, readJson } from './http';
 
 const AUTH_TOKENS_URL = 'https://generativelanguage.googleapis.com/v1beta/auth_tokens';
 const LIVE_CONSTRAINED =
@@ -55,20 +55,42 @@ export function forwardCloseCode(code: number | undefined): number {
   return code;
 }
 
-export function attachGeminiProxy(local: WsPeer, remote: WsPeer): void {
+export function attachGeminiProxy(local: WsPeer, remote: WsPeer, serverSetupFrame?: string): void {
   let closed = false;
+  let needsSetup = serverSetupFrame !== undefined;
 
-  const forwarder = (dest: WsPeer) => {
+  const rejectFrame = () => {
+    if (closed) return;
+    closed = true;
+    for (const peer of [local, remote]) {
+      try { peer.close(1008, 'Invalid Gemini Live frame'); } catch { /* Close the other peer too. */ }
+    }
+  };
+
+  const forwarder = (dest: WsPeer, capturedSetup?: string) => {
     let pending = Promise.resolve();
     return (data: unknown) => {
       pending = pending.then(async () => {
         if (closed) return;
         const text = await wsDataToText(data);
-        if (!closed) dest.send(text);
-      }).catch(() => { /* closed or invalid frame */ });
+        if (closed) return;
+        if (capturedSetup !== undefined) {
+          const frame: unknown = JSON.parse(text);
+          if (!isJsonObject(frame)) { rejectFrame(); return; }
+          const hasSetup = Object.hasOwn(frame, 'setup');
+          if (needsSetup) {
+            if (!hasSetup || Object.keys(frame).length !== 1 || !isJsonObject(frame.setup)) { rejectFrame(); return; }
+            needsSetup = false;
+            dest.send(capturedSetup);
+            return;
+          }
+          if (hasSetup) { rejectFrame(); return; }
+        }
+        dest.send(text);
+      }).catch(() => { if (capturedSetup !== undefined) rejectFrame(); });
     };
   };
-  const toRemote = forwarder(remote);
+  const toRemote = forwarder(remote, serverSetupFrame);
   const toLocal = forwarder(local);
 
   const closePeer = (dest: WsPeer, event: { code?: number; reason?: string }) => {
@@ -157,6 +179,16 @@ export async function handleGeminiLiveProxy(request: Request, env: WorkerEnv): P
     return new Response('Expected WebSocket', { status: 426 });
   }
 
+  const url = new URL(request.url);
+  const modes = url.searchParams.getAll('mode');
+  const targets = url.searchParams.getAll('target');
+  const mode = modes[0] ?? 'transcribe';
+  if (modes.length > 1 || (mode !== 'transcribe' && mode !== 'translate')) {
+    return errorJson('mode must be transcribe or translate', 400);
+  }
+  if (targets.length > 1) return errorJson('target must be specified once', 400);
+  const serverSetupFrame = JSON.stringify({ setup: geminiLiveSession(env, mode, targets[0]).setup });
+
   const pair = new WebSocketPair();
   const [client, server] = Object.values(pair);
   server.accept();
@@ -170,7 +202,7 @@ export async function handleGeminiLiveProxy(request: Request, env: WorkerEnv): P
       return errorJson('Gemini WebSocket upgrade failed', 502);
     }
     gemini.accept();
-    attachGeminiProxy(server, gemini);
+    attachGeminiProxy(server, gemini, serverSetupFrame);
   } catch {
     logError({ message: 'gemini live proxy failed' });
     server.close(1011, 'proxy failed');
