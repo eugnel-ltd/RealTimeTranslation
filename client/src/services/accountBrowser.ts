@@ -25,7 +25,7 @@ export class AccountBrowser {
   private recovery: Recovery | null = null;
   private codeEmail: { expected: string; email: string } | null = null;
   private message = '';
-  private pendingCache: { storage: StorageScope; jobId: string } | null = null;
+  private pendingCache: { storage: StorageScope; jobId: string; expected: string; scope: EnabledAccount['scope'] } | null = null;
   private expireTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor(private readonly origin: string, private readonly announce: () => void = () => undefined) {}
@@ -87,7 +87,6 @@ export class AccountBrowser {
         cacheMessage = this.pendingCache.storage.clearConfirmedAccountCache()
           ? 'This account’s known cache keys were removed from this browser. Other devices, unassigned browser data and backups remain separate.'
           : 'Server erasure completed. This browser could not remove its cache; clear this site’s browser data manually.';
-        if (!cacheMessage.includes('could not')) this.pendingCache = null;
       } else cacheMessage = 'Server erasure completed. This page cannot identify an account cache after reload; clear this site’s browser data if needed. Other devices and backups remain separate.';
     }
     this.update({ status: 'deletion', receipt, cacheMessage });
@@ -104,6 +103,9 @@ export class AccountBrowser {
     try {
       const result = parseAccount(await accountRequest('/api/account', undefined, request.signal), this.origin);
       if (!this.fresh(generation) || this.pendingControls) return;
+      const candidate = this.pendingCache;
+      if (candidate && (!result.enabled || JSON.stringify(result.scope) !== JSON.stringify(candidate.scope) ||
+          (result.session && accountExpectation(result.session.accountId) !== candidate.expected))) this.pendingCache = null;
       this.setExpected(result.enabled ? result.session ? accountExpectation(result.session.accountId) : 'signed-out' : undefined);
       if (!result.enabled) {
         if (previous.status === 'owner' && previous.runtime.active && !invalidate) return;
@@ -158,7 +160,7 @@ export class AccountBrowser {
     finally { await this.settled(); }
   }
   async signout(expected?: string): Promise<void> {
-    const control = this.control(expected); this.codeEmail = null;
+    const control = this.control(expected); this.codeEmail = null; this.pendingCache = null;
     const recovery: Recovery = { kind: 'signout', expected: control.expected };
     this.recovery = recovery; this.announce();
     try {
@@ -184,12 +186,17 @@ export class AccountBrowser {
   async deleteAccount(expected?: string): Promise<void> {
     if (this.state.status !== 'account') return;
     const storage = this.state.runtime.storage;
+    const scope = this.state.account.scope;
     const control = this.control(expected);
     try {
       const result = await accountRequest('/api/account/delete', { confirm: true }, this.controls.signal, control.expected);
       if (!isObject(result) || result.state !== 'pending') throw new AccountError('SERVICE_UNAVAILABLE', 503);
       const receipt = parseDeletion({ ...result, completedAt: null });
-      if (this.fresh(control.generation)) this.pendingCache = { storage, jobId: receipt.jobId };
+      // This is an own-request continuation, not a principal update. Focus may
+      // advance verification while all personal activity remains quarantined.
+      // Settled bootstrap must still accept its captured scope/account, and
+      // only a fresh matching completed status can erase these fixed keys.
+      if (!this.disposed) this.pendingCache = { storage, jobId: receipt.jobId, expected: control.expected, scope };
     } catch (error) {
       if (this.fresh(control.generation)) this.recovery = {
         kind: error instanceof AccountError && error.code === 'REAUTH_REQUIRED' ? 'reauth' : 'deletion',
@@ -205,7 +212,7 @@ export class AccountBrowser {
     } finally { await this.settled(); }
   }
   dispose(): void {
-    this.revoke(); this.disposed = true; ++this.generation; this.codeEmail = null;
+    this.revoke(); this.disposed = true; ++this.generation; this.codeEmail = null; this.pendingCache = null;
     this.verification?.abort(); this.controls.abort(); this.listeners.clear();
   }
 }
