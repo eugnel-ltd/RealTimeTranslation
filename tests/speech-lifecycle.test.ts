@@ -22,7 +22,12 @@ vi.mock('../client/node_modules/microsoft-cognitiveservices-speech-sdk', () => (
   },
 }));
 const config = { inputLanguage: 'en-US', outputLanguage: 'fr', secondOutputLanguage: 'ja' };
-let callbacks: { onRecognizing: ReturnType<typeof vi.fn>; onRecognized: ReturnType<typeof vi.fn>; onError: ReturnType<typeof vi.fn>; onNotice: ReturnType<typeof vi.fn> };
+let callbacks: {
+  onRecognizing: ReturnType<typeof vi.fn<(original: string, translations: string[], detectedLanguage?: string) => void>>;
+  onRecognized: ReturnType<typeof vi.fn<(original: string, translations: string[], detectedLanguage?: string) => void>>;
+  onError: ReturnType<typeof vi.fn<(message: string) => void>>;
+  onNotice: ReturnType<typeof vi.fn<(message: string) => void>>;
+};
 let stop: (() => Promise<void>) | undefined;
 async function flush() { for (let i = 0; i < 20; i++) await Promise.resolve(); }
 function final(text: string) { return { result: { reason: 2, text, language: 'en-US', translations: { languages: ['ja', 'fr'], get: (language: string) => language === 'fr' ? 'bonjour' : 'こんにちは' } } }; }
