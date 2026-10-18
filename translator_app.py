@@ -5,13 +5,22 @@ import json
 from dotenv import load_dotenv
 import azure.cognitiveservices.speech as speechsdk
 import threading
-import time
-import platform
+import queue
 
 # Load environment variables
 load_dotenv()
 
 SETTINGS_FILE = "settings.json"
+
+class _RecognitionSession:
+    def __init__(self, input_language, output_language, second_output_language):
+        self.input_language = input_language
+        self.target_languages = tuple(
+            language for language in (output_language, second_output_language)
+            if language and language.strip()
+        )
+        self.stop_event = threading.Event()
+
 
 class TranslatorApp:
     def __init__(self, root):
@@ -28,8 +37,13 @@ class TranslatorApp:
         self.root.geometry("700x500")
         
         self.is_running = False
-        self.translation_recognizer = None
         self.recognition_thread = None
+        self._active_session = None
+        self._recognizer_lock = threading.Lock()
+        self._events = queue.Queue()
+        self._closed = False
+        self._event_timer = None
+        self._button_timer = None
         
         # Load settings (input_language, output_language, second_output_language)
         self.load_settings()
@@ -39,6 +53,7 @@ class TranslatorApp:
         
         # Handle window close
         self.root.protocol("WM_DELETE_WINDOW", self.on_closing)
+        self._event_timer = self.root.after(50, self._drain_events)
         
     def load_settings(self):
         # Default settings if no file found
@@ -117,155 +132,177 @@ class TranslatorApp:
             self.start_recognition()
     
     def start_recognition(self):
-        if self.is_running:
+        if self.is_running or self._closed:
             return
+        session = _RecognitionSession(
+            self.input_language, self.output_language, self.second_output_language
+        )
+        self._active_session = session
         try:
             self.is_running = True
             self.start_button.configure(text="Stop", state="disabled")
-            
-            # Initialize the text mark at the end of the text widget
             self.recognition_text.mark_set("current_recognition_start", tk.END)
-            
-            # Start recognition in a separate thread
-            self.recognition_thread = threading.Thread(target=self.recognition_thread_func, daemon=True)
+            self.recognition_thread = threading.Thread(
+                target=self.recognition_thread_func, args=(session,), daemon=True
+            )
             self.recognition_thread.start()
-            self.root.after(100, lambda: self.start_button.configure(state="normal"))
-            
-        except Exception as e:
-            self.update_display(f"Error starting recognition: {str(e)}\n", "error")
+            self._button_timer = self.root.after(100, self._enable_start_button, session)
+        except Exception as error:
+            session.stop_event.set()
+            self._active_session = None
             self.is_running = False
+            self.update_display(f"Error starting recognition: {error}\n", "error")
             self.start_button.configure(text="Start", state="normal")
-    
-    def recognition_thread_func(self):
-        try:
-            # Configure speech translation
-            speech_config = speechsdk.translation.SpeechTranslationConfig(
-                subscription=os.getenv('SPEECH_KEY'),
-                region=os.getenv('SPEECH_REGION')
-            )
-            
-            if not os.getenv('SPEECH_KEY') or not os.getenv('SPEECH_REGION'):
-                raise Exception("Speech credentials not found. Please check your .env file.")
-            
-            # Set the input and target languages
-            speech_config.speech_recognition_language = self.input_language
-            
-            # Add the target languages (for bilingual)
-            target_langs = []
-            if self.output_language:
-                target_langs.append(self.output_language)
-            if self.second_output_language and self.second_output_language.strip():
-                target_langs.append(self.second_output_language)
-            
-            # Add them to config
-            for lang in target_langs:
-                speech_config.add_target_language(lang)
 
-            # On macOS and other platforms, rely on default input device
-            print("Using default microphone (system default input).")
-            audio_config = speechsdk.audio.AudioConfig(use_default_microphone=True)
-            
-            self.translation_recognizer = speechsdk.translation.TranslationRecognizer(
-                translation_config=speech_config,
-                audio_config=audio_config
-            )
-            
-            def handle_recognizing(event):
-                result = event.result
-                if result.reason == speechsdk.ResultReason.TranslatingSpeech:
-                    # We have original text and possibly multiple translations
-                    original_text = result.text
-                    translations = result.translations
-                    
-                    self.root.after(0, lambda: self.update_bilingual_display(original_text, translations, "recognizing"))
-            
-            def handle_recognized(event):
-                result = event.result
-                if result.reason == speechsdk.ResultReason.TranslatedSpeech:
-                    original_text = result.text
-                    translations = result.translations
-                    # final result
-                    self.root.after(0, lambda: self.update_bilingual_display(original_text, translations, "final"))
-                elif result.reason == speechsdk.ResultReason.NoMatch:
-                    self.root.after(0, lambda: self.update_display("No speech could be recognized.\n", "error"))
-            
-            def handle_canceled(event):
-                result = event.result
-                if result.reason == speechsdk.CancellationReason.Error:
-                    error_msg = f"CANCELED: Error={result.error_details}\n"
-                    self.root.after(0, lambda msg=error_msg: self.update_display(msg, "error"))
-                self.root.after(0, self.stop_recognition)
-            
-            # Connect callbacks
-            self.translation_recognizer.recognizing.connect(handle_recognizing)
-            self.translation_recognizer.recognized.connect(handle_recognized)
-            self.translation_recognizer.canceled.connect(handle_canceled)
-            self.translation_recognizer.session_started.connect(
-                lambda evt: print('SESSION STARTED: {}'.format(evt)))
-            self.translation_recognizer.session_stopped.connect(
-                lambda evt: print('SESSION STOPPED {}'.format(evt)))
-            
-            # Start continuous recognition
-            print("Starting recognition...")
-            self.translation_recognizer.start_continuous_recognition()
-            
-            # Keep thread alive while recognition is running
-            while self.is_running:
-                time.sleep(0.1)
-            
-            # Stop recognition when thread ends
-            if self.translation_recognizer:
-                self.translation_recognizer.stop_continuous_recognition()
-                
-        except Exception as e:
-            error_msg = str(e)
-            self.root.after(0, lambda msg=error_msg: self.update_display(f"Recognition error: {msg}\n", "error"))
-        finally:
-            self.root.after(0, lambda: self.start_button.configure(text="Start", state="normal"))
-            self.is_running = False
-            
+    def _enable_start_button(self, session):
+        if not self._closed and session is self._active_session:
+            self._button_timer = None
+            self.start_button.configure(state="normal")
+
+    def _queue_event(self, session, kind, *data):
+        # SDK callbacks and workers never call Tk, including root.after.
+        if not self._closed:
+            self._events.put((session, kind, data))
+
+    def _drain_events(self):
+        self._event_timer = None
+        if self._closed:
+            return
+        # Bound each turn so a busy recognizer cannot starve the Tk main loop.
+        for _ in range(100):
+            try:
+                session, kind, data = self._events.get_nowait()
+            except queue.Empty:
+                break
+            if session is not self._active_session:
+                continue
+            if kind == "result":
+                original, translations, status = data
+                self.update_bilingual_display(
+                    original, translations, status, session.input_language
+                )
+            elif kind == "error":
+                self.update_display(data[0], "error")
+            elif kind == "finished":
+                self._active_session = None
+                self.is_running = False
+                self.start_button.configure(text="Start", state="normal")
+        self._event_timer = self.root.after(50, self._drain_events)
+
+    def recognition_thread_func(self, session):
+        # A replacement may wait for old SDK cleanup, without blocking Tk or
+        # sharing a recognizer. A stopped waiting session never opens the mic.
+        with self._recognizer_lock:
+            recognizer = None
+            try:
+                if session.stop_event.is_set():
+                    return
+                key = os.getenv('SPEECH_KEY')
+                region = os.getenv('SPEECH_REGION')
+                if not key or not region:
+                    raise ValueError("Speech credentials not found. Please check your .env file.")
+                speech_config = speechsdk.translation.SpeechTranslationConfig(
+                    subscription=key, region=region
+                )
+                speech_config.speech_recognition_language = session.input_language
+                for language in session.target_languages:
+                    speech_config.add_target_language(language)
+                if session.stop_event.is_set():
+                    return
+                audio_config = speechsdk.audio.AudioConfig(use_default_microphone=True)
+                recognizer = speechsdk.translation.TranslationRecognizer(
+                    translation_config=speech_config, audio_config=audio_config
+                )
+
+                def handle_recognizing(event):
+                    result = event.result
+                    if not session.stop_event.is_set() and result.reason == speechsdk.ResultReason.TranslatingSpeech:
+                        self._queue_event(
+                            session, "result", result.text, dict(result.translations.items()), "recognizing"
+                        )
+
+                def handle_recognized(event):
+                    if session.stop_event.is_set():
+                        return
+                    result = event.result
+                    if result.reason == speechsdk.ResultReason.TranslatedSpeech:
+                        self._queue_event(
+                            session, "result", result.text, dict(result.translations.items()), "final"
+                        )
+                    elif result.reason == speechsdk.ResultReason.NoMatch:
+                        self._queue_event(session, "error", "No speech could be recognized.\n")
+
+                def handle_canceled(event):
+                    if session.stop_event.is_set():
+                        return
+                    if event.reason == speechsdk.CancellationReason.Error:
+                        self._queue_event(session, "error", f"CANCELED: Error={event.error_details}\n")
+                    session.stop_event.set()
+
+                recognizer.recognizing.connect(handle_recognizing)
+                recognizer.recognized.connect(handle_recognized)
+                recognizer.canceled.connect(handle_canceled)
+                recognizer.session_stopped.connect(lambda _event: session.stop_event.set())
+                if session.stop_event.is_set():
+                    return
+                recognizer.start_continuous_recognition()
+                session.stop_event.wait()
+            except Exception as error:
+                self._queue_event(session, "error", f"Recognition error: {error}\n")
+            finally:
+                session.stop_event.set()
+                if recognizer is not None:
+                    try:
+                        recognizer.stop_continuous_recognition()
+                    except Exception as error:
+                        self._queue_event(session, "error", f"Error stopping recognition: {error}\n")
+                self._queue_event(session, "finished")
+
     def stop_recognition(self):
-        if self.is_running:
-            self.is_running = False
-            self.start_button.configure(text="Start")
-    
+        session = self._active_session
+        self._active_session = None
+        self.is_running = False
+        if session is not None:
+            session.stop_event.set()
+        if self._button_timer is not None:
+            self.root.after_cancel(self._button_timer)
+            self._button_timer = None
+        if not self._closed:
+            self.start_button.configure(text="Start", state="normal")
+
     def on_closing(self):
+        if self._closed:
+            return
+        self._closed = True
         self.stop_recognition()
+        if self._event_timer is not None:
+            self.root.after_cancel(self._event_timer)
+            self._event_timer = None
+        # SDK startup/cleanup can block; daemon workers finish without Tk.
         self.root.destroy()
-    
-    def update_bilingual_display(self, original_text, translations, status):
-        # Build the text block
-        text_block = f"Original ({self.input_language}): {original_text}"
+
+    def update_bilingual_display(self, original_text, translations, status, input_language=None):
+        text_block = f"Original ({input_language or self.input_language}): {original_text}"
         for lang, trans in translations.items():
             text_block += f"\nTranslation ({lang}): {trans}"
 
-        if status == "recognizing":
-            # If there's a currently displayed partial line, remove it first
-            if self.recognition_text.tag_ranges("current_recognition"):
-                self.recognition_text.delete("current_recognition.first", "current_recognition.last")
-
-            # Insert a new line with the current partial recognition at the end
-            start_index = self.recognition_text.index(tk.END)
-            # If there's already text, insert a newline first so each partial is on its own line
-            if self.recognition_text.index(tk.END) != "1.0":
-                self.recognition_text.insert(tk.END, "\n")
-            self.recognition_text.insert(tk.END, text_block)
-            
-            end_index = self.recognition_text.index(tk.END)
-            # Tag this newly inserted text as the current partial recognition
-            self.recognition_text.tag_add("current_recognition", start_index, end_index)
-
-        else:  # "final"
-            # On final recognition, finalize the current partial line
-            if self.recognition_text.tag_ranges("current_recognition"):
-                # Just remove the tag; we keep the text as is since it's now final
-                self.recognition_text.tag_remove("current_recognition", "current_recognition.first", "current_recognition.last")
-
-            # Add a newline ready for the next recognition sequence
+        if self.recognition_text.tag_ranges("current_recognition"):
+            self.recognition_text.delete("current_recognition.first", "current_recognition.last")
+            self.recognition_text.tag_remove("current_recognition", "1.0", tk.END)
+        content = self.recognition_text.get("1.0", "end-1c")
+        if content and not content.endswith("\n"):
             self.recognition_text.insert(tk.END, "\n")
-
+        # Tk's end index includes its mandatory trailing newline. Use the
+        # actual content end so the provisional tag covers the inserted words.
+        start_index = self.recognition_text.index("end-1c")
+        self.recognition_text.insert(tk.END, text_block)
+        if status == "recognizing":
+            end_index = self.recognition_text.index("end-1c")
+            self.recognition_text.tag_add("current_recognition", start_index, end_index)
+        else:
+            self.recognition_text.insert(tk.END, "\n")
         self.recognition_text.see(tk.END)
-        
+
     def update_display(self, text, status):
         # For simple error messages or direct inserts
         content = self.recognition_text.get("1.0", tk.END).strip()
