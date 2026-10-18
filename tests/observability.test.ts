@@ -146,7 +146,7 @@ describe('shared health behind Access', () => {
     expect(await (await fetchWorker(request('/api/health'), env())).json()).toEqual({ ok: true });
     const response = await fetchWorker(request('/api/healthz'), env());
     expect(response.status).toBe(200);
-    expect(await response.json()).toMatchObject({ status: 'ok', product: 'rtt', version });
+    expect(await response.json()).toMatchObject({ status: 'ok', product: 'rtt', version: `${version}+${'a'.repeat(40)}` });
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 

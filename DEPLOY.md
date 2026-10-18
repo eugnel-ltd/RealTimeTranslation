@@ -2,6 +2,25 @@
 
 Do **not** put API keys in the client. The Vite bundle is served as Worker static assets; all secrets live in Worker secrets.
 
+## Guarded release
+
+Production uses the reviewed exact-main command, from an isolated cloud checkout:
+
+```bash
+npm run release -- <exact-main-sha>
+npm run release -- <exact-main-sha> --apply
+```
+
+The first command is read-only preflight. It requires release level 3 and a genuinely green enforcement ledger, verifies every reviewed/check-passing first-parent merge since the green transition, and runs the unchanged `manifest_check.py product.yaml --publishing web`. An incomplete baseline stops apply; owner-only Access does not waive that gate. `--evidence-only` is for the trusted runner and does not claim publishing readiness.
+
+Install the pinned root/client dependencies in the isolated cloud environment before apply. Existing secure `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`, `RTT_UPTIME_ACCESS_CLIENT_ID` and `RTT_UPTIME_ACCESS_CLIENT_SECRET` capabilities are required, never passed on the command line. Apply refuses GitHub Actions, builds, dry-runs Wrangler, captures the current single-version rollback target, repeats preflight, then deploys with the exact merge SHA. Authenticated homepage and `/api/healthz` must verify `<package-version>+<sha>`. On failed health it rolls back to the captured version and reads the active deployment to confirm it. A failed/lost deploy response is reconciled before rollback; unreadable state is UNKNOWN and requires read-first recovery.
+
+Each submission has a unique version tag and exact-SHA message. Recovery requires the active version id and both actual Cloudflare annotations to match this attempt; a changed deployment alone proves nothing. It freshly checks active deployment/version before rollback or a health claim. An intervening/unreadable/unattributed deployment is UNKNOWN and is never rolled back. Cloudflare provides no atomic compare-and-swap rollback, so one operator/session must coordinate the remaining read/write interval; these checks do not claim protection from an operator bypassing that lane.
+
+The command reports `HEALTH_VERIFIED`, not a completed release. Observe `npx --no-install wrangler tail rtt --format json` for five minutes after health and count new errors without saving or posting raw request logs. Any error, missing observation or ambiguous provider state holds completion and needs incident/recovery handling. Record the reviewed SHA, attempt, deployment/version ids, health time, error count/window, rollback result if used, release note and manifest live identity before claiming release completion. Recovery rehearsal on a protected non-production target remains required before the first level-3 release; it has not been performed here.
+
+The `auto-merge.yml` and `web-release-check.yml` workflows run trusted main orchestration only on the existing self-hosted runner. They read PRs and commits as data, do not install dependencies/build/deploy, and hold no Cloudflare credentials. Explicit dispatch after an automatic merge compensates for GitHub's suppression of push events from `github.token`. A successful dispatch or evidence check is not a deployment receipt.
+
 ## Worker
 
 - Name: `rtt`
@@ -65,8 +84,7 @@ npx wrangler secret put AZURE_TRANSLATOR_KEY
 Update vars:
 
 ```bash
-npx wrangler deploy
-# or dashboard → Workers → rtt → Settings → Variables
+npm run release -- <exact-main-sha> --apply
 ```
 
 ## Cloudflare Access
@@ -82,14 +100,13 @@ Local development: copy `.dev.vars.example` to `.dev.vars` and set `SKIP_ACCESS_
 ## Build and deploy (from this repo)
 
 ```bash
-npm install
-npm --prefix client install
-npm run build                 # client production build + secret-pattern scan of dist
-npx wrangler deploy --dry-run # packaging check only
-npx wrangler deploy           # you run this with your Cloudflare token
+npm ci
+npm --prefix client ci
+npm run release -- <exact-main-sha>         # reviewed chain and publishing baseline; no deploy
+npm run release -- <exact-main-sha> --apply # isolated cloud, existing secure capabilities
 ```
 
-This environment has **no** Cloudflare/Azure/Gemini/TypeSafe keys. Do not deploy from the agent.
+The 18 October 2026 revision-4 environment observation had no Cloudflare/Access capability bindings. This is a dated observation, not a permanent ban on autonomous release. A configured isolated cloud session can apply once the green ledger and publishing baseline pass; no owner approval is added.
 
 ## Local Worker + smoke script
 
