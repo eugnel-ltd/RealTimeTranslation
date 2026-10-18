@@ -64,8 +64,14 @@ try {
         refused.push('unexpected API request');
         await route.abort();
       } else {
-        // Every redirect creates another routed request and is checked again.
-        await route.continue();
+        // Browser interception does not recheck redirect targets. Fetch without following.
+        const response = await route.fetch({ maxRedirects: 0, timeout: 5000 });
+        if (response.status() >= 300 && response.status() < 400) {
+          refused.push('redirected local asset');
+          await route.abort();
+        } else {
+          await route.fulfill({ response });
+        }
       }
     });
     await context.addInitScript(({ savedHistory }) => {
@@ -75,6 +81,7 @@ try {
     }, { savedHistory: history });
     const page = await context.newPage();
     await page.goto(base.origin, { waitUntil: 'networkidle' });
+    if (refused.length) throw new Error('Capture refused unexpected requests before accepting assets');
     await page.getByRole('heading', { name: 'Real-Time Translator', exact: true }).waitFor();
     await page.evaluate(() => document.fonts.ready);
     for (const view of ['session', 'history']) {
