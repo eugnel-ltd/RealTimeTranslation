@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { ChevronDownIcon, ChevronUpIcon, TrashIcon } from '@heroicons/react/24/solid';
-import { RecordingSession } from '../types'; // Remove TranscriptionRecord
+import { RecordingSession } from '../types';
+import { deleteTranscriptSession, loadTranscriptHistory } from '../services/transcriptHistory';
 
 interface ConfirmDialogProps {
   isOpen: boolean;
@@ -58,13 +59,9 @@ const History: React.FC = () => {
   }, []);
 
   const loadHistory = () => {
-    const storedHistory = localStorage.getItem('transcriptionHistory');
-    if (storedHistory) {
-      const history: RecordingSession[] = JSON.parse(storedHistory);
-      // Sort sessions from latest to earliest
-      history.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
-      setSessions(history);
-    }
+    const history = loadTranscriptHistory();
+    history.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+    setSessions(history);
   };
 
   const toggleExpand = (id: string) => {
@@ -85,13 +82,10 @@ const History: React.FC = () => {
   };
 
   const handleDeleteConfirm = () => {
-    const sessionId = deleteConfirm.sessionId;
-    const storedHistory = localStorage.getItem('transcriptionHistory');
-    if (storedHistory) {
-      const history: RecordingSession[] = JSON.parse(storedHistory);
-      const updatedHistory = history.filter(session => session.sessionId !== sessionId);
-      localStorage.setItem('transcriptionHistory', JSON.stringify(updatedHistory));
-      loadHistory();
+    const history = deleteTranscriptSession(deleteConfirm.sessionId);
+    if (history) {
+      history.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+      setSessions(history);
     }
     setDeleteConfirm({ isOpen: false, sessionId: '', sessionDate: '' });
   };
