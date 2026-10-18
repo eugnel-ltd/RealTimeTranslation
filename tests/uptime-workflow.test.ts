@@ -103,7 +103,7 @@ describe('trusted scheduled uptime workflow', () => {
       const open = [];
       const issues = {
         listForRepo() {},
-        async create(parameters) { state.creates++; open.push({ number: 71, ...parameters }); },
+        async create(parameters) { state.creates++; open.push({ number: 71, user: { login: 'github-actions[bot]', type: 'Bot' }, ...parameters }); },
         async createComment() { state.comments++; },
         async update() { state.closes++; open.splice(0); },
       };

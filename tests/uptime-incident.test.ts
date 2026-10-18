@@ -11,12 +11,12 @@ const healthy: UptimeResult = { configured: true, healthy: true, exitCode: 0, ch
 const owner = 'eugnel-ltd';
 const repo = 'RealTimeTranslation';
 
-function offlineGitHub(initial: Array<{ number: number; title: string; body?: string; pull_request?: unknown }> = []) {
+function offlineGitHub(initial: Array<{ number: number; title: string; body?: string; pull_request?: unknown; user?: { login: string; type: string } }> = []) {
   const open = [...initial];
   const issues = {
     listForRepo: vi.fn(),
     create: vi.fn(async (parameters: { title: string; body: string }) => {
-      open.push({ number: 1001, ...parameters });
+      open.push({ number: 1001, user: { login: 'github-actions[bot]', type: 'Bot' }, ...parameters });
       return {};
     }),
     createComment: vi.fn(async () => ({})),
@@ -55,8 +55,8 @@ describe('offline uptime incident lifecycle', () => {
       { number: 1, title: 'Other failure', body: marker },
       { number: 2, title, body: 'User discussion' },
       { number: 3, title, body: marker, pull_request: {} },
-      { number: 4, title, body: marker },
-      { number: 5, title, body: marker },
+      { number: 4, title, body: marker, user: { login: 'github-actions[bot]', type: 'Bot' } },
+      { number: 5, title, body: marker, user: { login: 'github-actions[bot]', type: 'Bot' } },
     ]);
     expect(await manageIncident({ result: healthy, github, owner, repo })).toEqual({ action: 'recovered', count: 2 });
     expect(github.paginate).toHaveBeenCalledWith(github.rest.issues.listForRepo, { owner, repo, state: 'open', per_page: 100 });
