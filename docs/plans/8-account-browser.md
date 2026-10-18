@@ -3,7 +3,7 @@
 - Intent: #8, browser slice of the shared D1/Workers account migration.
 - Spec: accepted `eugnel-platform/docs/specs/rtt-8-identity.md` and its matching plan, currently in `/workspace/work/platform-identity-service`.
 - Task type and level: feature at level 2; this slice stops at merge. It does not enable accounts, deploy resources, establish the release baseline, or claim the complete migration accepted.
-- Accepted by: pending independent risky-plan review by the orchestrator, before source changes.
+- Accepted by: orchestrator independent risky-plan review of commit `1812a156b0d4b4fed3d4c882e1a7aa2a0ec58daa`, before source changes. Auth control requests remain independent of the revoked application request scope.
 
 ## Files that change
 
@@ -44,4 +44,5 @@ The service author confirmed these same-origin routes on 18 October 2026. All fe
 
 ## Divergences
 
-- None.
+- 18 October 2026: the bounded vendor test handoff timed out after 30 seconds; the runner returned exit 1 after the remaining vendor was unavailable. No files changed. The session authored the typed tests and continues implementation under the documented direct fallback.
+- First-red proof before source: 15 tests execute, 11 fail on actual original startup/storage/lifecycle behaviour and 4 pass. Logs `/workspace/work/accounts-browser/first-red.log`; full typecheck, lint and trusted pre-freeze secret scan pass. Storage API compatibility adapters call the original unscoped implementation when the new factory is absent, exposing adoption/shared keys/stale writes rather than failing missing imports. The real production entry/App tests independently reproduce premature owner settings reads, speech continuing, un-aborted answers and retained settings writes.
