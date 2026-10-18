@@ -180,6 +180,10 @@ export async function handleGeminiLiveProxy(request: Request, env: WorkerEnv): P
   }
 
   const url = new URL(request.url);
+  const origin = request.headers.get('Origin');
+  if (origin !== null && origin !== url.origin) {
+    return errorJson('Invalid WebSocket origin', 403);
+  }
   const modes = url.searchParams.getAll('mode');
   const targets = url.searchParams.getAll('target');
   const mode = modes[0] ?? 'transcribe';
