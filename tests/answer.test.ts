@@ -245,13 +245,13 @@ describe('answer', () => {
     const text = await res.text();
     expect(text).toContain('Partial answer');
     expect(text).toContain('event: error');
-    expect(text).toContain(reason);
+    expect(text).toContain('Gemini answer stopped');
     expect(text).not.toContain('event: done');
   });
 
   it.each([
-    [{ promptFeedback: { blockReason: 'BLOCKLIST' } }, 'BLOCKLIST'],
-    [{ error: { status: 'RESOURCE_EXHAUSTED', message: 'Quota exhausted' } }, 'Quota exhausted'],
+    [{ promptFeedback: { blockReason: 'BLOCKLIST' } }, 'Gemini prompt blocked'],
+    [{ error: { status: 'RESOURCE_EXHAUSTED', message: 'Quota exhausted' } }, 'Gemini free-tier quota reached'],
   ])('reports an upstream block or error object', async (payload, message) => {
     const res = await handleAnswer(post({ question: 'Hello?' }), env(), mockFetch(() => new Response(event(payload))));
     const text = await res.text();
