@@ -56,12 +56,12 @@ function sessionValue(value: unknown): VerifiedAccount {
   return Object.freeze({ accountId: value.accountId, authenticatedAt: value.authenticatedAt, expiresAt: value.expiresAt });
 }
 
-function expectedAccount(request: Request): string | undefined {
+export function captureExpectedAccount(request: Request, allowQuery: boolean): string | undefined {
   const url = new URL(request.url);
   const header = request.headers.get('Eugnel-Expected-Account');
   const query = url.searchParams.getAll('expectedAccount');
   const invalid = () => { throw new AccountRequestError(400, 'Invalid expected account'); };
-  if (query.length > 1 || query.length && (url.pathname !== '/api/gemini-live' || request.method !== 'GET' || header !== null)) invalid();
+  if (query.length > 1 || query.length && (!allowQuery || header !== null)) invalid();
   if (query.length) {
     try { decodeURIComponent(url.search); } catch { invalid(); }
   }
@@ -82,7 +82,7 @@ export async function resolveAccountContext(request: Request, env: WorkerEnv): P
   if (new URL(request.url).origin !== scope.origin) throw new AccountRequestError(403, 'Invalid account origin');
   if (!['GET', 'HEAD'].includes(request.method) && request.headers.get('Origin') !== scope.origin) throw new AccountRequestError(403, 'Invalid account origin');
   const token = sessionToken(request);
-  const expectation = expectedAccount(request);
+  const expectation = captureExpectedAccount(request, request.method === 'GET' && new URL(request.url).pathname === '/api/gemini-live');
   try {
     const { createIdentityClient } = await import('eugnel-platform/auth/identity');
     const client = createIdentityClient({ binding, callerId, secret });

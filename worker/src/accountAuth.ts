@@ -1,11 +1,14 @@
 import type { WorkerEnv } from './env';
-import { accountConfiguration } from './accounts';
+import { accountConfiguration, captureExpectedAccount } from './accounts';
+import { AccountRequestError } from './accountErrors';
 import { isJsonObject, json } from './http';
 
 const paths = new Set(['/api/account','/api/account/delete','/api/account/delete/status','/api/account/delete/advance',
   '/api/auth/capabilities','/api/auth/email/start','/api/auth/email/verify','/api/auth/signout','/api/auth/google/cancel',
   '/api/auth/google/start','/api/auth/google/callback','/api/auth/apple/start','/api/auth/apple/callback','/api/auth/apple/finalize','/api/auth/apple/notifications']);
 const names = new Set(['__Host-eugnel_session','__Host-eugnel_flow','__Host-eugnel_delete']);
+const postControls = new Set(['/api/auth/email/start','/api/auth/email/verify','/api/auth/signout','/api/auth/google/cancel','/api/account/delete','/api/account/delete/advance']);
+const oauthStarts = new Set(['/api/auth/google/start','/api/auth/apple/start']);
 class ProxyFailure extends Error { constructor(readonly status = 503) { super('Account service unavailable'); } }
 const failure = (status: number) => json({ error: status === 400 ? 'REQUEST_INVALID' : 'SERVICE_UNAVAILABLE' }, status, { 'Cache-Control': 'no-store' });
 
@@ -84,10 +87,15 @@ export async function handleAccountAuth(request: Request, env: WorkerEnv): Promi
     if (!['GET','POST'].includes(request.method)) throw new ProxyFailure(400);
     if (request.method === 'POST' && !['/api/auth/apple/callback','/api/auth/apple/notifications'].includes(url.pathname)
       && request.headers.get('Origin') !== config.scope.origin) throw new ProxyFailure(400);
+    const oauthStart = request.method === 'GET' && oauthStarts.has(url.pathname);
+    const controlled = oauthStart || request.method === 'POST' && postControls.has(url.pathname);
+    const expectedAccount = controlled ? captureExpectedAccount(request, oauthStart) : undefined;
+    if (oauthStart && url.searchParams.has('expectedAccount')) url.searchParams.delete('expectedAccount');
     const headers: Record<string,string> = {};
     const cookies = identityCookies(request); if (cookies) headers.Cookie = cookies;
     for (const name of ['Origin','Content-Type','CF-Connecting-IP']) { const value = request.headers.get(name); if (value !== null) headers[name] = value; }
     const payload = { method: request.method, path: `${url.pathname}${url.search}`, headers,
+      ...(expectedAccount === undefined ? {} : { expectedAccount }),
       ...(request.method === 'POST' ? { body: await requestBody(request) } : {}) };
     const { createIdentityClient } = await import('eugnel-platform/auth/identity');
     const response = await createIdentityClient({ binding, callerId, secret }).request('/v1/browser', payload);
@@ -104,5 +112,5 @@ export async function handleAccountAuth(request: Request, env: WorkerEnv): Promi
     if (location) outgoing.set('Location', location);
     for (const value of setCookies) outgoing.append('Set-Cookie', value);
     return new Response(response.body, { status: response.status, headers: outgoing });
-  } catch (error) { return failure(error instanceof ProxyFailure ? error.status : 503); }
+  } catch (error) { return failure(error instanceof ProxyFailure || error instanceof AccountRequestError ? error.status : 503); }
 }
