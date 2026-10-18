@@ -56,6 +56,22 @@ function sessionValue(value: unknown): VerifiedAccount {
   return Object.freeze({ accountId: value.accountId, authenticatedAt: value.authenticatedAt, expiresAt: value.expiresAt });
 }
 
+function expectedAccount(request: Request): string | undefined {
+  const url = new URL(request.url);
+  const header = request.headers.get('Eugnel-Expected-Account');
+  const query = url.searchParams.getAll('expectedAccount');
+  const invalid = () => { throw new AccountRequestError(400, 'Invalid expected account'); };
+  if (query.length > 1 || query.length && (url.pathname !== '/api/gemini-live' || request.method !== 'GET' || header !== null)) invalid();
+  if (query.length) {
+    try { decodeURIComponent(url.search); } catch { invalid(); }
+  }
+  const value = header ?? query[0];
+  if (value === undefined) return undefined;
+  if (value === 'signed-out') return value;
+  if (!value.startsWith('account:') || !validAccountId(value.slice(8)) || value.includes(',')) invalid();
+  return value;
+}
+
 export async function resolveAccountContext(request: Request, env: WorkerEnv): Promise<AccountContext> {
   const configuration = accountConfiguration(env);
   if (!configuration) return legacy;
@@ -66,6 +82,7 @@ export async function resolveAccountContext(request: Request, env: WorkerEnv): P
   if (new URL(request.url).origin !== scope.origin) throw new AccountRequestError(403, 'Invalid account origin');
   if (!['GET', 'HEAD'].includes(request.method) && request.headers.get('Origin') !== scope.origin) throw new AccountRequestError(403, 'Invalid account origin');
   const token = sessionToken(request);
+  const expectation = expectedAccount(request);
   try {
     const { createIdentityClient } = await import('eugnel-platform/auth/identity');
     const client = createIdentityClient({ binding, callerId, secret });
@@ -74,6 +91,7 @@ export async function resolveAccountContext(request: Request, env: WorkerEnv): P
     const payload: unknown = await response.json();
     if (!isJsonObject(payload) || !sameScope(payload.scope, scope)) throw new AccountRequestError(503);
     const session = sessionValue(payload.session);
+    if (expectation !== undefined && expectation !== `account:${session.accountId}`) throw new AccountRequestError(401, 'ACCOUNT_CHANGED');
     const profiles = createAccountProfiles(db, session.accountId);
     await profiles.assertActive();
     return Object.freeze({ mode: 'customer', scope, session, profiles });
