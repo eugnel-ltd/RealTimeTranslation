@@ -1,0 +1,28 @@
+{
+  "name": "Real-Time Translation",
+  "locale": "en-GB",
+  "channel": "web",
+  "url": "https://rtt.eugnel.com/",
+  "availability": "Owner-only behind Cloudflare Access; public sign-up is unavailable.",
+  "price": { "model": "free", "amount": 0, "currency": "GBP" },
+  "shortDescription": "Speech transcription and translation with session templates and optional AI answers.",
+  "description": "Real-Time Translation turns speech into a live transcript and translated text. Choose an interview or meeting template, review transcripts saved in this browser, and use optional AI answers for session questions. The web app is currently available only to its owner. Transcripts and answers can contain errors; check them before use and tell participants before recording. Browser history can be lost when site data is cleared. Provider availability and configuration affect speech, translation and AI features.",
+  "features": [
+    "Live speech transcription and translated text",
+    "Interview and meeting session templates",
+    "Manual questions and optional question detection for AI answers",
+    "Transcript history and settings held in the current browser"
+  ],
+  "support": "rtt@eugnel.uk",
+  "privacyContact": "hello@eugnel.com",
+  "policyPaths": ["/legal/privacy", "/legal/terms", "/legal/refunds", "/legal/data-use"],
+  "policyStatus": "Implementation tracked in issue #9; these paths are not evidence of a live deployment.",
+  "releaseNote": "releases/1.0.0.md",
+  "releaseStatus": "unreleased",
+  "whatsNew": "Repeated transcript lines remain in saved history, and recording sessions handle cancellation more reliably. Question extraction can use the full selected transcript window, and the initial browser download loads the speech SDK only when needed.",
+  "screenshots": {
+    "source": "local production build with synthetic data; not a live release",
+    "files": ["screenshots/desktop-session.png", "screenshots/desktop-history.png", "screenshots/mobile-session.png", "screenshots/mobile-history.png"]
+  },
+  "icon": null
+}
