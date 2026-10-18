@@ -15,3 +15,9 @@ The sweep's prior vendor test/implementation attempts exited 1 without usable ch
 ## Separate live acceptance
 
 Do not retain this input-validation bug to produce Sentry evidence. Issues #10/#11 still require actual authorised live acceptance after service/network bindings exist. A local envelope capture with a fake DSN proves behavior only and cannot complete those baselines.
+
+## Verification
+
+First-red commit `79b453d` contains 16 correctly typed behavior tests, locked before the repair: 10 malformed-encoding cases failed with actual 500 versus expected 400, and six Access/valid-ID controls passed. `npm run typecheck` passed before that commit. The frozen file SHA-256 is `08f95e1c263cd2783669aa3e6ff42080b6f3149d9fa75e349f307897b9ba5347`.
+
+After the bounded decode catch, all 373 runtime tests passed, including all 16 unchanged regressions. Typecheck, lint and build/bundle secret scan passed. No deployment or production malformed request was performed. Raw command logs remain in the session scratch directory `/workspace/work/live-acceptance/profile-uri-*.log`; they contain synthetic test values only.

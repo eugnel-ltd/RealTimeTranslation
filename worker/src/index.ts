@@ -110,7 +110,12 @@ async function routeApi(request: Request, env: WorkerEnv, url: URL, ctx?: Execut
   }
   const profileMatch = pathname.match(/^\/api\/profiles\/([^/]+)$/);
   if (profileMatch) {
-    const id = decodeURIComponent(profileMatch[1] ?? '');
+    let id: string;
+    try {
+      id = decodeURIComponent(profileMatch[1] ?? '');
+    } catch {
+      throw new InvalidRequestError('Invalid profile id encoding');
+    }
     if (method === 'GET') return handleGetProfile(env, id);
     if (method === 'PUT') return handlePutProfile(request, env, id);
   }
