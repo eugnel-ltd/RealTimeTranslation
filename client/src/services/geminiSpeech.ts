@@ -3,6 +3,7 @@ import { fetchGeminiToken, translateText, type GeminiToken } from './api';
 import { arrayBufferToBase64, floatTo16BitPcm, resample } from './pcm';
 import type { TranslationConfig } from './azureSpeech';
 import { assertRuntime, type AppRuntime } from './accountLifetime';
+import { accountExpectation } from './browserStorage';
 
 type SpeechCallbacks = {
   onRecognizing: (original: string, translations: string[], detectedLanguage?: string) => void;
@@ -93,7 +94,7 @@ export class GeminiSpeechService {
       if (!token.wsUrl && this.runtime?.accountMode) {
         if (!this.runtime.accountId) { reject(new Error('Verified account unavailable')); return; }
         const query = new URLSearchParams(proxy.split('?')[1] ?? '');
-        query.set('expectedAccount', `account:${this.runtime.accountId}`);
+        query.set('expectedAccount', accountExpectation(this.runtime.accountId));
         proxy = `${proxy.split('?')[0]}?${query}`;
       }
       const ws = new WebSocket(token.wsUrl || toWsUrl(proxy));

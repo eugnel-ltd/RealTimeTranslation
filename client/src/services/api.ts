@@ -1,11 +1,12 @@
 import { assertRuntime, type AppRuntime } from './accountLifetime';
+import { accountExpectation } from './browserStorage';
 
 export async function apiFetch(path: string, init?: RequestInit, runtime?: AppRuntime): Promise<Response> {
   assertRuntime(runtime);
   const headers = new Headers(init?.headers);
   if (runtime?.accountMode) {
     if (!runtime.accountId) throw new Error('Verified account unavailable');
-    headers.set('Eugnel-Expected-Account', `account:${runtime.accountId}`);
+    headers.set('Eugnel-Expected-Account', accountExpectation(runtime.accountId));
   }
   const signal = runtime ? (init?.signal ? AbortSignal.any([runtime.signal, init.signal]) : runtime.signal) : init?.signal;
   const res = await fetch(path, { credentials: 'include', ...init, headers, signal });

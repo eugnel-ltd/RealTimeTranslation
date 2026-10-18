@@ -1,4 +1,4 @@
-import { isObject } from './browserStorage';
+import { isCanonicalAccountId, isObject } from './browserStorage';
 
 export type AccountCapabilities = Readonly<{ email: boolean; google: boolean; apple: boolean; siteKey: string | null }>;
 export type AccountSession = Readonly<{ accountId: string; authenticatedAt: string; expiresAt: string }>;
@@ -34,7 +34,7 @@ export function parseAccount(value: unknown, origin: string): AccountResponse {
   let session: AccountSession | null = null;
   if (value.session !== null) {
     const raw = value.session;
-    if (!isObject(raw) || !validId(raw.accountId) || !validDate(raw.authenticatedAt) || !validDate(raw.expiresAt) ||
+    if (!isObject(raw) || !isCanonicalAccountId(raw.accountId) || !validDate(raw.authenticatedAt) || !validDate(raw.expiresAt) ||
         Date.parse(raw.expiresAt) <= Date.now() ||
         Date.parse(raw.authenticatedAt) >= Date.parse(raw.expiresAt)) return invalid();
     session = { accountId: raw.accountId, authenticatedAt: raw.authenticatedAt, expiresAt: raw.expiresAt };

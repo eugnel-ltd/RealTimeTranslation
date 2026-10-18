@@ -3,6 +3,17 @@ export function isObject(value: unknown): value is Record<string, unknown> {
 }
 
 export type StorageIdentity = Readonly<{ productId: string; environment: string; origin: string; accountId: string }>;
+
+/** Canonical account IDs are opaque legacy data, not configuration identifiers. */
+export function isCanonicalAccountId(value: unknown): value is string {
+  return typeof value === 'string' && value.length > 0 && value.length <= 128 && value.trim() === value &&
+    [...value].every((character) => { const code = character.charCodeAt(0); return code >= 32 && code !== 127; });
+}
+
+export function accountExpectation(accountId: string): string {
+  if (!isCanonicalAccountId(accountId)) throw new Error('Invalid canonical account');
+  return `account:${encodeURIComponent(accountId)}`;
+}
 export interface StorageScope {
   readonly active: boolean;
   readonly accountId?: string;
@@ -16,7 +27,7 @@ export interface StorageScope {
 /** Construct only after server verification. The captured prefix never changes. */
 export function createStorageScope(identity?: StorageIdentity): StorageScope {
   if (identity && (identity.productId !== 'rtt' || !/^[A-Za-z0-9_-]{1,128}$/.test(identity.environment) ||
-      !/^[A-Za-z0-9_-]{1,128}$/.test(identity.accountId) || new URL(identity.origin).origin !== identity.origin)) {
+      !isCanonicalAccountId(identity.accountId) || new URL(identity.origin).origin !== identity.origin)) {
     throw new Error('Invalid account storage scope');
   }
   const prefix = identity ? `rtt:account:v1:${encodeURIComponent(JSON.stringify([

@@ -1,5 +1,5 @@
 import { createAppRuntime, type AppRuntime } from './accountLifetime';
-import { createStorageScope, isObject, type StorageScope } from './browserStorage';
+import { accountExpectation, createStorageScope, isObject, type StorageScope } from './browserStorage';
 import { AccountError, accountMessage, accountRequest, parseAccount, parseDeletion, type DeletionReceipt, type EnabledAccount } from './accounts';
 
 export type BrowserAccountState =
@@ -104,7 +104,7 @@ export class AccountBrowser {
     try {
       const result = parseAccount(await accountRequest('/api/account', undefined, request.signal), this.origin);
       if (!this.fresh(generation) || this.pendingControls) return;
-      this.setExpected(result.enabled ? result.session ? `account:${result.session.accountId}` : 'signed-out' : undefined);
+      this.setExpected(result.enabled ? result.session ? accountExpectation(result.session.accountId) : 'signed-out' : undefined);
       if (!result.enabled) {
         if (previous.status === 'owner' && previous.runtime.active && !invalidate) return;
         this.revoke(); this.update({ status: 'owner', runtime: createAppRuntime(createStorageScope(), false, () => { void this.refresh(true); }) }); return;
