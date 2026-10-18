@@ -117,9 +117,10 @@ if (!answer.res.ok) {
 }
 let question = '';
 let tokens = '';
-for (const block of answer.text.split('\n\n')) {
-  const event = block.split('\n').find((l) => l.startsWith('event: '))?.slice(7).trim();
-  const dataLine = block.split('\n').find((l) => l.startsWith('data: '));
+let completed = false;
+for (const block of answer.text.split(/\r?\n\r?\n/)) {
+  const event = block.split(/\r?\n/).find((l) => l.startsWith('event: '))?.slice(7).trim();
+  const dataLine = block.split(/\r?\n/).find((l) => l.startsWith('data: '));
   if (!event || !dataLine) continue;
   let data = {};
   try {
@@ -127,8 +128,17 @@ for (const block of answer.text.split('\n\n')) {
   } catch {
     data = {};
   }
+  if (event === 'error') {
+    console.error('answer failed:', String(data.error ?? 'provider stream error'));
+    process.exit(1);
+  }
+  if (event === 'done') completed = true;
   if (event === 'question') question = String(data.question ?? '');
   if (event === 'token') tokens += String(data.text ?? '');
+}
+if (!completed) {
+  console.error('answer failed: stream ended before done');
+  process.exit(1);
 }
 console.log('--- extracted question ---');
 console.log(question);

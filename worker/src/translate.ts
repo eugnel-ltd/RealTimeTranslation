@@ -1,5 +1,5 @@
 import type { WorkerEnv } from './env';
-import { errorJson, json, logError, readJson } from './http';
+import { errorJson, isString, json, logError, readJson } from './http';
 import { toTranslatorCode, translationLabel, uniqueTargets } from './languages';
 
 export type TranslateBody = {
@@ -15,7 +15,10 @@ export async function handleTranslate(
   env: WorkerEnv,
   fetchImpl: typeof fetch = fetch,
 ): Promise<Response> {
-  const body = await readJson<TranslateBody>(request);
+  const body = await readJson<TranslateBody>(request, {
+    text: isString, from: isString,
+    to: (value) => Array.isArray(value) && value.every(isString),
+  });
   const text = (body.text ?? '').trim();
   const requested = uniqueTargets(body.to ?? []);
   const mapped = requested.map(toTranslatorCode);
@@ -23,11 +26,15 @@ export async function handleTranslate(
   if (!text) return errorJson('text is required', 400);
   if (targets.length === 0) return errorJson('to is required', 400);
 
+  const fetchWithSignal: typeof fetch = (input, init) => {
+    request.signal.throwIfAborted();
+    return fetchImpl(input, { ...init, signal: request.signal });
+  };
   let res: Response;
   if (env.AZURE_TRANSLATOR_KEY) {
-    res = await translateAzure(env, text, targets, body.from, fetchImpl);
+    res = await translateAzure(env, text, targets, body.from, fetchWithSignal);
   } else if (env.GEMINI_API_KEY) {
-    res = await translateGemini(env, text, targets, body.from, fetchImpl);
+    res = await translateGemini(env, text, targets, body.from, fetchWithSignal);
   } else {
     return errorJson('No translation provider configured (set AZURE_TRANSLATOR_KEY or GEMINI_API_KEY)', 503);
   }
@@ -69,8 +76,7 @@ async function translateAzure(
   );
 
   if (!res.ok) {
-    const errBody = await res.text();
-    logError({ message: 'azure translator failed', status: res.status, body: errBody.slice(0, 400) });
+    logError({ message: 'azure translator failed', status: res.status });
     if (env.GEMINI_API_KEY) {
       return translateGemini(env, text, targets, from, fetchImpl);
     }
@@ -130,8 +136,7 @@ async function translateGemini(
   );
 
   if (!res.ok) {
-    const errBody = await res.text();
-    logError({ message: 'gemini translate failed', status: res.status, body: errBody.slice(0, 400) });
+    logError({ message: 'gemini translate failed', status: res.status });
     return errorJson('Gemini translation failed', 502, { status: res.status });
   }
 

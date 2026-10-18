@@ -1,11 +1,10 @@
-import { defineConfig } from 'vite';
+import { defineConfig, type UserConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import fs from 'fs';
-import path from 'path';
 
 // https://vitejs.dev/config/
-export default defineConfig(({ command, mode }) => {
-  const config = {
+export default defineConfig(({ mode }) => {
+  const config: UserConfig = {
     plugins: [react()],
     optimizeDeps: {
       include: ['microsoft-cognitiveservices-speech-sdk', 'react', 'react-dom']
@@ -25,7 +24,7 @@ export default defineConfig(({ command, mode }) => {
   };
 
   // Add HTTPS configuration only in development mode
-  if (mode === 'development' && fs.existsSync('certs/key.pem') && fs.existsSync('certs/cert.pem')) {
+  if (config.server && mode === 'development' && fs.existsSync('certs/key.pem') && fs.existsSync('certs/cert.pem')) {
     config.server.https = {
       key: fs.readFileSync('certs/key.pem'),
       cert: fs.readFileSync('certs/cert.pem'),

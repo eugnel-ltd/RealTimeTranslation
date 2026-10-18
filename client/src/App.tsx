@@ -24,9 +24,10 @@ import {
   transcriptPaneClass,
 } from '../../shared/aiAnswerPanel';
 import { applyTemplateDefaults, getSessionTemplate } from '../../shared/sessionTemplates';
-import { QaItem, RecordingSession, TranscriptEntry, TranscriptionRecord, SessionTemplateId, UserSettings } from './types';
+import { QaItem, TranscriptEntry, SessionTemplateId, UserSettings } from './types';
 import { ThemeProvider } from './contexts/ThemeContext';
 import { SettingsService } from './services/settings';
+import { createTranscriptId, persistTranscriptEntries } from './services/transcriptHistory';
 import { SpeechController } from './services/speechController';
 import { detectQuestion, fetchPublicConfig, streamAnswer } from './services/api';
 import { createDebouncedDetector, HttpQuestionDetector } from './detectors/httpDetector';
@@ -40,9 +41,18 @@ const LAYOUT_CYCLE: UserSettings['splitLayout'][] = [
   'transcript-bottom',
 ];
 
+type RecordingOperation = {
+  controller: SpeechController | null;
+  generation: number;
+  sessionId: string;
+  timestamp: string;
+  active: boolean;
+  used: boolean;
+};
+
 const App: React.FC = () => {
   const settingsService = SettingsService.getInstance();
-  const [settings, setSettings] = useState<UserSettings>(settingsService.getSettings());
+  const [settings, setSettings] = useState<UserSettings>(() => settingsService.getSettings());
   const [isRecording, setIsRecording] = useState(false);
   const [transcripts, setTranscripts] = useState<TranscriptEntry[]>([]);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
@@ -57,7 +67,9 @@ const App: React.FC = () => {
   const [manualDraft, setManualDraft] = useState('');
   const [timerRunId, setTimerRunId] = useState(0);
 
-  const speechRef = useRef<SpeechController | null>(null);
+  const recordingRef = useRef<RecordingOperation | null>(null);
+  const recordingGenerationRef = useRef(0);
+  const pendingTranscriptsRef = useRef(new Map<string, TranscriptEntry>());
   const lastAnsweredRef = useRef<string | null>(null);
   const lastAnsweredAtRef = useRef<number | null>(null);
   const lastAnsweredStartIdRef = useRef<number | null>(null);
@@ -72,7 +84,6 @@ const App: React.FC = () => {
   const tailStartIdRef = useRef<number | null>(null);
   const questionInputRef = useRef<HTMLTextAreaElement>(null);
   const transcriptsRef = useRef(transcripts);
-  transcriptsRef.current = transcripts;
   const aiAnswerPanelRef = useRef(settings.showAiAnswer);
   const prevShowAiAnswerRef = useRef(settings.showAiAnswer);
   const ignoreUntilFinalSigRef = useRef<string | null>(null);
@@ -85,101 +96,116 @@ const App: React.FC = () => {
   );
 
   const saveTranscriptsToHistory = useCallback(() => {
-    const currentSessionId = localStorage.getItem('currentSessionId');
-    if (!currentSessionId) return;
-
-    const storedHistory = localStorage.getItem('transcriptionHistory');
-    const history: RecordingSession[] = storedHistory ? JSON.parse(storedHistory) : [];
-    const existingSessionIndex = history.findIndex((session) => session.sessionId === currentSessionId);
-    const finalTranscripts = transcriptsRef.current.filter((t) => t.isFinal);
-    if (finalTranscripts.length === 0) return;
-
-    const existingContent = new Set(history.flatMap((session) => session.transcriptions.map((t) => t.originalText)));
-    const transcriptsToSave: TranscriptionRecord[] = finalTranscripts
-      .filter((t) => !existingContent.has(t.original))
-      .map((t) => ({
-        id: Date.now().toString() + Math.random().toString(36).substr(2, 9),
-        timestamp: t.timestamp || new Date().toISOString(),
-        originalText: t.original,
-        translatedTexts: t.translations,
-        sourceLanguage: t.sourceLanguage || settings.inputLanguage,
-        targetLanguages: [settings.outputLanguage, settings.secondOutputLanguage].filter((lang): lang is string =>
-          Boolean(lang),
-        ),
-      }));
-
-    if (transcriptsToSave.length === 0) return;
-
-    if (existingSessionIndex !== -1) {
-      history[existingSessionIndex].transcriptions = [
-        ...history[existingSessionIndex].transcriptions,
-        ...transcriptsToSave,
-      ];
-    } else {
-      history.unshift({
-        sessionId: currentSessionId,
-        timestamp: new Date().toISOString(),
-        transcriptions: transcriptsToSave,
-      });
-    }
-    localStorage.setItem('transcriptionHistory', JSON.stringify(history));
-  }, [settings.inputLanguage, settings.outputLanguage, settings.secondOutputLanguage]);
+    if (pendingTranscriptsRef.current.size === 0) return;
+    const savedIds = new Set(persistTranscriptEntries([...pendingTranscriptsRef.current.values()]));
+    if (savedIds.size === 0) return;
+    for (const id of savedIds) pendingTranscriptsRef.current.delete(id);
+    const updated = transcriptsRef.current.map((entry) =>
+      savedIds.has(entry.id) && !entry.isSaved ? { ...entry, isSaved: true } : entry,
+    );
+    transcriptsRef.current = updated;
+    setTranscripts(updated);
+  }, []);
 
   useEffect(() => {
-    const hasUnsavedFinalTranscript = transcripts.some((t) => t.isFinal && !t.isSaved);
-    if (hasUnsavedFinalTranscript) saveTranscriptsToHistory();
-    if (!isRecording && transcripts.length > 0) saveTranscriptsToHistory();
-    window.addEventListener('beforeunload', saveTranscriptsToHistory);
-    return () => window.removeEventListener('beforeunload', saveTranscriptsToHistory);
+    saveTranscriptsToHistory();
   }, [isRecording, transcripts, saveTranscriptsToHistory]);
 
   useEffect(() => {
-    speechRef.current = new SpeechController({
-      onRecognizing: (original, translations, detectedLanguage) => {
-        setTranscripts((prev) => {
-          const updated = [...prev];
-          const interimIndex = updated.findIndex((t) => !t.isFinal);
-          const entry: TranscriptEntry = {
-            original,
-            translations: translations || [],
-            isFinal: false,
-            timestamp: new Date().toISOString(),
-            sourceLanguage: detectedLanguage || settings.inputLanguage,
-            targetLanguage: settings.outputLanguage,
-          };
-          if (interimIndex !== -1) updated[interimIndex] = entry;
-          else updated.push(entry);
-          return updated;
-        });
-      },
-      onRecognized: (original, translations, detectedLanguage) => {
-        setTranscripts((prev) => {
-          const updated = [...prev];
-          const interimIndex = updated.findIndex((t) => !t.isFinal);
-          const entry: TranscriptEntry = {
-            original,
-            translations: translations || [],
-            isFinal: true,
-            isSaved: false,
-            timestamp: interimIndex !== -1 ? updated[interimIndex].timestamp : new Date().toISOString(),
-            sourceLanguage: detectedLanguage || settings.inputLanguage,
-            targetLanguage: settings.outputLanguage,
-          };
-          if (interimIndex !== -1) updated[interimIndex] = entry;
-          else if (!updated.some((t) => t.original === original && t.isFinal)) updated.push(entry);
-          return updated;
-        });
-      },
-      onError: (message) => {
-        setError(message);
-        setIsRecording(false);
-      },
-      onNotice: (message) => setError(message),
-    });
-    return () => {
-      void speechRef.current?.stop();
+    window.addEventListener('beforeunload', saveTranscriptsToHistory);
+    return () => window.removeEventListener('beforeunload', saveTranscriptsToHistory);
+  }, [saveTranscriptsToHistory]);
+
+  const stopRecording = useCallback(async () => {
+    const operation = recordingRef.current;
+    if (!operation) return;
+    // Invalidate synchronously, before awaiting the provider or accepting another start.
+    operation.active = false;
+    recordingRef.current = null;
+    const generation = ++recordingGenerationRef.current;
+    setIsRecording(false);
+    saveTranscriptsToHistory();
+    try {
+      await operation.controller?.stop();
+      saveTranscriptsToHistory();
+    } catch {
+      if (generation === recordingGenerationRef.current) setError('Failed to stop recording.');
+    }
+  }, [saveTranscriptsToHistory]);
+
+  const createRecordingOperation = useCallback(() => {
+    const operation: RecordingOperation = {
+      controller: null,
+      generation: ++recordingGenerationRef.current,
+      sessionId: createTranscriptId(),
+      timestamp: new Date().toISOString(),
+      active: false,
+      used: false,
     };
-  }, [settings.inputLanguage, settings.outputLanguage]);
+    // Every controller belongs to one session and one immutable set of speech settings.
+    const isCurrent = () => operation.active &&
+      recordingRef.current === operation &&
+      recordingGenerationRef.current === operation.generation;
+    const receiveTranscript = (
+      original: string, translations: string[], detectedLanguage: string | undefined, isFinal: boolean,
+    ) => {
+      if (!isCurrent()) return;
+      const newId = createTranscriptId();
+      const timestamp = new Date().toISOString();
+      const updated = [...transcriptsRef.current];
+      const interimIndex = updated.findIndex((entry) => !entry.isFinal && entry.sessionId === operation.sessionId);
+      const interim = interimIndex === -1 ? undefined : updated[interimIndex];
+      const entry: TranscriptEntry = {
+        id: interim?.id ?? newId,
+        sessionId: operation.sessionId,
+        sessionTimestamp: operation.timestamp,
+        original,
+        translations: translations || [],
+        isFinal,
+        isSaved: false,
+        timestamp: interim?.timestamp ?? timestamp,
+        sourceLanguage: detectedLanguage || settings.inputLanguage,
+        targetLanguage: settings.outputLanguage,
+        targetLanguages: [settings.outputLanguage, settings.secondOutputLanguage].filter(Boolean),
+      };
+      if (interimIndex !== -1) updated[interimIndex] = entry;
+      else updated.push(entry);
+      if (isFinal) pendingTranscriptsRef.current.set(entry.id, entry);
+      // Publish the ref and retry queue synchronously so an immediate Stop cannot lose a final
+      // while React is batching the corresponding render.
+      transcriptsRef.current = updated;
+      setTranscripts(updated);
+    };
+    operation.controller = new SpeechController({
+      onRecognizing: (original, translations, detectedLanguage) =>
+        receiveTranscript(original, translations, detectedLanguage, false),
+      onRecognized: (original, translations, detectedLanguage) =>
+        receiveTranscript(original, translations, detectedLanguage, true),
+      onError: (message) => {
+        if (!isCurrent()) return;
+        setError(message);
+        void stopRecording();
+      },
+      onNotice: (message) => {
+        if (isCurrent()) setError(message);
+      },
+    });
+    return operation;
+  }, [settings.inputLanguage, settings.outputLanguage, settings.secondOutputLanguage, stopRecording]);
+
+  useEffect(() => {
+    recordingRef.current = createRecordingOperation();
+    setIsRecording(false);
+    return () => {
+      const operation = recordingRef.current;
+      recordingRef.current = null;
+      ++recordingGenerationRef.current;
+      if (operation) {
+        operation.active = false;
+        void operation.controller?.stop().catch(() => undefined);
+      }
+    };
+  }, [createRecordingOperation, settings.speechEngine]);
 
   useEffect(() => {
     void fetchPublicConfig()
@@ -621,40 +647,40 @@ const App: React.FC = () => {
   ]);
 
   const handleToggleRecording = async () => {
-    if (!speechRef.current) return;
-    if (!isRecording) {
-      try {
-        localStorage.setItem('currentSessionId', Date.now().toString());
-        await speechRef.current.start(
-          {
-            inputLanguage: settings.inputLanguage,
-            outputLanguage: settings.outputLanguage,
-            secondOutputLanguage: settings.secondOutputLanguage,
-          },
-          settings.speechEngine,
-        );
-        setIsRecording(true);
-        setError(null);
-      } catch (err) {
-        setError('Failed to start recording. Please check your microphone access.');
-        console.error('Error starting recording:', err);
-        localStorage.removeItem('currentSessionId');
-      }
-    } else {
-      try {
-        setIsRecording(false);
-        await speechRef.current.stop();
-        await new Promise((resolve) => setTimeout(resolve, 100));
-        saveTranscriptsToHistory();
-        localStorage.removeItem('currentSessionId');
-      } catch (err) {
-        setError('Failed to stop recording.');
-        console.error('Error stopping recording:', err);
-      }
+    if (recordingRef.current?.active) {
+      await stopRecording();
+      return;
+    }
+    const operation = recordingRef.current?.used === false
+      ? recordingRef.current : createRecordingOperation();
+    if (!operation.controller) return;
+    recordingRef.current = operation;
+    operation.used = true;
+    operation.active = true;
+    operation.timestamp = new Date().toISOString();
+    setError(null);
+    try {
+      await operation.controller.start(
+        {
+          inputLanguage: settings.inputLanguage,
+          outputLanguage: settings.outputLanguage,
+          secondOutputLanguage: settings.secondOutputLanguage,
+        },
+        settings.speechEngine,
+      );
+      if (recordingRef.current !== operation || !operation.active ||
+          operation.generation !== recordingGenerationRef.current) return;
+      setIsRecording(true);
+    } catch {
+      if (recordingRef.current !== operation || !operation.active ||
+          operation.generation !== recordingGenerationRef.current) return;
+      setError('Failed to start recording. Please check your microphone access.');
+      await stopRecording();
     }
   };
 
   const handleClearTranscripts = () => {
+    saveTranscriptsToHistory();
     ++answerGenerationRef.current;
     detector.cancel?.();
     clearSilenceTimer();
@@ -687,11 +713,9 @@ const App: React.FC = () => {
       next.outputLanguage !== settings.outputLanguage ||
       next.secondOutputLanguage !== settings.secondOutputLanguage ||
       next.speechEngine !== settings.speechEngine;
+    if (languageChanged) void stopRecording();
     setSettings(next);
     settingsService.updateSettings(next);
-    if (languageChanged && isRecording) {
-      void handleToggleRecording();
-    }
   };
 
   const copyLatest = async () => {
