@@ -1,6 +1,6 @@
 import { getSessionTemplate, isSessionTemplateId } from '../../shared/sessionTemplates';
 import type { WorkerEnv } from './env';
-import { errorJson, logError, readJson } from './http';
+import { errorJson, isBoolean, isFiniteNumber, isString, logError, readJson } from './http';
 import { isProfileId, kvProfileLoader, type ProfileLoader } from './profiles';
 
 export type AnswerLanguage = 'same' | 'en' | 'yue' | 'zh-CN';
@@ -117,7 +117,13 @@ export async function handleAnswer(
 ): Promise<Response> {
   if (!env.GEMINI_API_KEY) return errorJson('GEMINI_API_KEY is not configured', 503);
 
-  const body = await readJson<AnswerBody>(request);
+  const body = await readJson<AnswerBody>(request, {
+    conversation: isString, question: isString, questionHint: isString, previousQuestion: isString,
+    answerLanguage: (value) => isString(value) && ['same', 'en', 'yue', 'zh-CN'].includes(value),
+    userContext: isString, extraNotes: isString, cvBackground: isString, profileId: isString,
+    model: isString, force: isBoolean, templateId: isString, extractQuestion: isBoolean,
+    questionTimeLimitSeconds: isFiniteNumber,
+  });
   const conversation = (body.conversation ?? '').trim();
   if (!conversation && !body.question) return errorJson('conversation or question is required', 400);
 
@@ -166,10 +172,18 @@ export async function handleAnswer(
         .filter(Boolean)
         .join('\n');
 
-  const res = await fetchImpl(
+  request.signal.throwIfAborted();
+  const upstream = new AbortController();
+  const abort = () => upstream.abort();
+  const cleanup = () => request.signal.removeEventListener('abort', abort);
+  request.signal.addEventListener('abort', abort, { once: true });
+  let res: Response;
+  try {
+    res = await fetchImpl(
     `https://generativelanguage.googleapis.com/v1beta/models/${model}:streamGenerateContent?alt=sse`,
     {
       method: 'POST',
+      signal: upstream.signal,
       headers: {
         'x-goog-api-key': env.GEMINI_API_KEY,
         'Content-Type': 'application/json',
@@ -184,16 +198,21 @@ export async function handleAnswer(
         },
       }),
     },
-  );
+    );
+  } catch (err) {
+    cleanup();
+    throw err;
+  }
 
   if (!res.ok || !res.body) {
-    const errBody = await res.text();
-    logError({ message: 'gemini answer request failed', status: res.status, body: errBody.slice(0, 400) });
+    cleanup();
+    await res.body?.cancel().catch(() => undefined);
+    logError({ message: 'gemini answer request failed', status: res.status });
     if (res.status === 429) return errorJson('Gemini free-tier quota reached', 429);
     return errorJson('Gemini answer request failed', 502, { status: res.status });
   }
 
-  return sseResponse(relayGeminiStream(res.body, knownQuestion, extractQuestion));
+  return sseResponse(relayGeminiStream(res.body, knownQuestion, extractQuestion, upstream, cleanup));
 }
 
 function sseResponse(body: ReadableStream<Uint8Array> | string): Response {
@@ -213,6 +232,8 @@ function relayGeminiStream(
   body: ReadableStream<Uint8Array>,
   knownQuestion: string,
   extractQuestion: boolean,
+  upstream: AbortController,
+  cleanup: () => void,
 ): ReadableStream<Uint8Array> {
   const encoder = new TextEncoder();
   const decoder = new TextDecoder();
@@ -222,16 +243,32 @@ function relayGeminiStream(
   let preamble = '';
   let usage: Record<string, number> = {};
   let completed = false;
+  const reader = body.getReader();
+  let cancelled = false;
+  let downstreamCancelled = false;
+  let cancelling: Promise<void> | undefined;
+  const cancel = () => {
+    if (cancelled) return cancelling ?? Promise.resolve();
+    cancelled = true;
+    upstream.abort();
+    cancelling = reader.cancel().catch(() => undefined);
+    return cancelling;
+  };
+  const onAbort = () => { void cancel(); };
+  upstream.signal.addEventListener('abort', onAbort, { once: true });
+  if (upstream.signal.aborted) void cancel();
 
   return new ReadableStream({
     async start(controller) {
-      const send = (event: string, data: unknown) => controller.enqueue(encoder.encode(encodeSse(event, data)));
+      const send = (event: string, data: unknown) => {
+        if (!cancelled) controller.enqueue(encoder.encode(encodeSse(event, data)));
+      };
       if (knownQuestion) send('question', { question: knownQuestion });
 
-      const reader = body.getReader();
       try {
         stream: while (true) {
           const { done, value } = await reader.read();
+          if (cancelled) return;
           // At the end, flush the decoder and parse a last event that has no trailing blank line.
           buffer += done ? decoder.decode() : decoder.decode(value, { stream: true });
           const chunks = buffer.split(/\r?\n\r?\n/);
@@ -315,12 +352,21 @@ function relayGeminiStream(
         send('done', {});
         controller.close();
       } catch (err) {
-        send('error', { error: err instanceof Error ? err.message : String(err) });
-        controller.close();
+        if (!cancelled) {
+          send('error', { error: err instanceof Error ? err.message : String(err) });
+          controller.close();
+        }
       } finally {
         await reader.cancel().catch(() => undefined);
         reader.releaseLock();
+        upstream.signal.removeEventListener('abort', onAbort);
+        cleanup();
+        if (cancelled && !downstreamCancelled) controller.close();
       }
+    },
+    cancel() {
+      downstreamCancelled = true;
+      return cancel();
     },
   });
 }

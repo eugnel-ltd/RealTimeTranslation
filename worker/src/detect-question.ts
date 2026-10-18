@@ -9,7 +9,7 @@ import {
   MIN_QUESTION_THRESHOLD,
 } from '../../shared/extractWindow';
 import type { WorkerEnv } from './env';
-import { json, log, logError, readJson } from './http';
+import { isFiniteNumber, isJsonObject, isString, json, log, logError, readJson } from './http';
 import {
   evaluateSystemOne,
   isTransientTypesafeStatus,
@@ -74,7 +74,14 @@ export async function handleDetectQuestion(
   fetchImpl: typeof fetch = fetch,
   now = Date.now(),
 ): Promise<Response> {
-  const body = await readJson<DetectQuestionBody>(request);
+  const body = await readJson<DetectQuestionBody>(request, {
+    segments: (value) => Array.isArray(value) && value.every((segment) =>
+      isJsonObject(segment) && isFiniteNumber(segment.index) && Number.isInteger(segment.index)
+      && isString(segment.text) && (segment.timestamp === undefined || isString(segment.timestamp))),
+    windowSeconds: isFiniteNumber, threshold: isFiniteNumber,
+    lastAnsweredQuestion: (value) => value === null || isString(value),
+    mode: (value) => value === 'auto' || value === 'question-start',
+  });
   const segments = (body.segments ?? []).filter((s) => s.text?.trim());
   if (segments.length === 0) {
     return json({

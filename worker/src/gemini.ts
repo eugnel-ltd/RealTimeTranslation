@@ -1,6 +1,6 @@
 import { geminiLiveSetup, type GeminiLiveMode } from '../../shared/geminiLive';
 import type { WorkerEnv } from './env';
-import { errorJson, json, logError, readJson } from './http';
+import { errorJson, isString, json, logError, readJson } from './http';
 
 const AUTH_TOKENS_URL = 'https://generativelanguage.googleapis.com/v1beta/auth_tokens';
 const LIVE_CONSTRAINED =
@@ -58,13 +58,18 @@ export function forwardCloseCode(code: number | undefined): number {
 export function attachGeminiProxy(local: WsPeer, remote: WsPeer): void {
   let closed = false;
 
-  const sendText = async (dest: WsPeer, data: unknown) => {
-    try {
-      dest.send(await wsDataToText(data));
-    } catch {
-      /* closed */
-    }
+  const forwarder = (dest: WsPeer) => {
+    let pending = Promise.resolve();
+    return (data: unknown) => {
+      pending = pending.then(async () => {
+        if (closed) return;
+        const text = await wsDataToText(data);
+        if (!closed) dest.send(text);
+      }).catch(() => { /* closed or invalid frame */ });
+    };
   };
+  const toRemote = forwarder(remote);
+  const toLocal = forwarder(local);
 
   const closePeer = (dest: WsPeer, event: { code?: number; reason?: string }) => {
     if (closed) return;
@@ -77,10 +82,10 @@ export function attachGeminiProxy(local: WsPeer, remote: WsPeer): void {
   };
 
   local.addEventListener('message', (event) => {
-    void sendText(remote, (event as MessageEvent).data);
+    toRemote((event as MessageEvent).data);
   });
   remote.addEventListener('message', (event) => {
-    void sendText(local, (event as MessageEvent).data);
+    toLocal((event as MessageEvent).data);
   });
   local.addEventListener('close', (event) => closePeer(remote, event as CloseEvent));
   remote.addEventListener('close', (event) => closePeer(local, event as CloseEvent));
@@ -99,7 +104,9 @@ export async function handleGeminiToken(
   let mode = (url.searchParams.get('mode') as GeminiMode | null) ?? 'transcribe';
   let targetLanguage = url.searchParams.get('target') ?? undefined;
   if (request.method === 'POST') {
-    const body = await readJson<GeminiTokenBody>(request).catch(() => ({}) as GeminiTokenBody);
+    const body = await readJson<GeminiTokenBody>(request, {
+      mode: (value) => value === 'transcribe' || value === 'translate', targetLanguage: isString,
+    });
     mode = body.mode ?? mode;
     targetLanguage = body.targetLanguage ?? targetLanguage;
   }
@@ -126,8 +133,7 @@ export async function handleGeminiToken(
   });
 
   if (!res.ok) {
-    const errBody = await res.text();
-    logError({ message: 'gemini auth_tokens failed', status: res.status, body: errBody.slice(0, 400) });
+    logError({ message: 'gemini auth_tokens failed', status: res.status });
     return errorJson('Failed to mint Gemini ephemeral token', 502, { status: res.status });
   }
 
