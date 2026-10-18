@@ -55,7 +55,11 @@ export class GeminiSpeechService {
       session.started = true;
       this.reconnectTimer = setTimeout(() => {
         if (!this.current(session)) return;
-        void this.start(session.config, session.mode).catch((error: unknown) => {
+        const restarting = this.start(session.config, session.mode);
+        const restartGeneration = this.session;
+        void restarting.catch((error: unknown) => {
+          // A failed start disposes its generation once. A later start/stop owns any further generation.
+          if (this.active || this.session !== restartGeneration + 1) return;
           this.callbacks.onError(error instanceof Error ? error.message : 'Gemini reconnect failed');
         });
       }, 8 * 60 * 1000);

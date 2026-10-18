@@ -17,3 +17,9 @@ Entry format (newest first):
 ```
 
 ## Entries
+
+### Keep failure callbacks owned by the operation that failed
+- Cause: a scheduled Gemini recycle rejected after its microphone wait completed; its unguarded catch reported an old error into a newer live session.
+- Fix: issue #13; the recycle catch checks the failed start's disposal generation and that no replacement session is active.
+- Done right: test both a failed recycle superseded by a successful start and a current recycle failure that still reports once.
+- Seen: 1× (2026-10-18)
