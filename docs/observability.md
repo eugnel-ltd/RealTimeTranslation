@@ -2,7 +2,7 @@
 
 Server reporting and the authenticated uptime workflow are prepared. `baseline.observability` remains `missing` until live evidence below exists. This source change provisions no external service. Operator evidence below records the Access setup separately; Sentry and live end-to-end checks remain pending.
 
-RTT reuses `eugnel-platform/telemetry`, pinned to commit `d50993325b0d094ea8b79d30dc75696ea387ec28`. The narrow `yaml:2.8.3` override fixes the shared package's CLI dependency advisory; the Worker does not import its YAML CLI. There is no browser Sentry SDK, new analytics binding, Cloudflare cron or paid monitoring service.
+RTT reuses `eugnel-platform/telemetry` at the immutable reviewed revision recorded in [package.json](../package.json) and [package-lock.json](../package-lock.json). The narrow `yaml:2.8.3` override fixes the shared package's CLI dependency advisory; the Worker does not import its YAML CLI. There is no browser Sentry SDK, new analytics binding, Cloudflare cron or paid monitoring service.
 
 ## What can leave the Worker
 

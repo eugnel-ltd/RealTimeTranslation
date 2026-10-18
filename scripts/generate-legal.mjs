@@ -35,11 +35,16 @@ const navigation = '<nav aria-label="Legal"><a href="/">Application</a> · <a hr
 const sources = [
   ['Google Gemini terms', 'https://ai.google.dev/gemini-api/terms'],
   ['Google abuse monitoring', 'https://ai.google.dev/gemini-api/docs/usage-policies'],
+  ['Google sign-in privacy', 'https://policies.google.com/privacy'],
+  ['Sign in with Apple privacy', 'https://www.apple.com/legal/privacy/data/en/sign-in-with-apple/'],
   ['Microsoft Speech privacy', 'https://learn.microsoft.com/en-us/azure/foundry/responsible-ai/speech-service/speech-to-text/data-privacy-security'],
   ['Microsoft Translator privacy', 'https://learn.microsoft.com/en-us/azure/foundry/responsible-ai/translator/data-privacy-security'],
   ['TypeSafe privacy', 'https://typesafe.ai/legal/privacy-policy'],
   ['TypeSafe data processing terms', 'https://typesafe.ai/legal/data-processing'],
   ['Cloudflare data processing terms', 'https://www.cloudflare.com/cloudflare-customer-dpa/'],
+  ['Cloudflare Turnstile privacy', 'https://www.cloudflare.com/turnstile-privacy-policy/'],
+  ['Cloudflare email logs and previews', 'https://developers.cloudflare.com/email-service/observability/logs/'],
+  ['Cloudflare D1 backup recovery', 'https://developers.cloudflare.com/d1/reference/time-travel/'],
 ];
 
 try {
