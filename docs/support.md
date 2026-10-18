@@ -1,6 +1,6 @@
 # RTT support
 
-RTT's configured support recipient is `rtt@eugnel.uk`. Live checks remain pending.
+RTT's configured support recipient is `rtt@eugnel.uk`. Routing is complete according to the Grok relay below; end-to-end receipt and intake checks remain pending.
 Keep `baseline.support: missing` and issue [#11](https://github.com/eugnel-ltd/RealTimeTranslation/issues/11) open until the checks below pass.
 
 The owner approved this address on 2026-10-18. It must use the existing shared service:
@@ -19,20 +19,31 @@ The owner approved this address on 2026-10-18. It must use the existing shared s
 Use the shared AI-SDLC `modules/support.md`, `workers/support-mail`, `scripts/support_inbox_pull.py` and `scripts/support_intake.py`.
 RTT needs no separate email backend, Worker binding, bucket or dependency.
 
-## Complete the external setup
+## Relayed routing evidence
+
+On 18 October 2026 at approximately 09:00 BST, Grok relayed that:
+
+- Email Routing rule `104ec0ea…` sends the exact recipient `rtt@eugnel.uk` to the existing Worker `eugnel-support-mail`.
+- The deployed `FORWARD_TO` destination and all other routing rules are unchanged.
+- The existing R2 bucket contained two objects before the synthetic test. This inventory does not prove RTT message receipt.
+- James still needs to send the synthetic message.
+
+These are relayed observations, not direct verification by this session. No authoritative end-to-end destination receipt, exact-recipient R2 record/index or intake result has been confirmed here. Keep the support baseline `missing`, the product status unchanged and issue #11 open until that evidence is complete.
+
+## Verify routing and complete receipt checks
 
 1. Inspect the current rules for Email Routing on `eugnel.uk` through authorised company facilities.
    Inspect the existing Worker and bucket configuration.
 2. Preserve all other rules and the deployed, verified `FORWARD_TO` destination.
    The shared Worker's empty local `FORWARD_TO` does not prove deployed state. Never deploy that empty value.
-3. Add or reuse only the exact `rtt@eugnel.uk` rule, with action `Send to a Worker: eugnel-support-mail`.
+3. Confirm the reported exact `rtt@eugnel.uk` rule uses `Send to a Worker: eugnel-support-mail`; no additional rule is needed if it matches.
 4. Send one explicitly synthetic message through an authorised sender.
 5. Confirm its arrival at the existing destination and its exact-recipient record in the R2 day index and inbox object.
 6. Copy only that synthetic record into a fresh directory for the dry run below.
 7. Record the non-sensitive receipt, index and intake-read timestamps. Obtain independent review before you mark the baseline `done`.
 
 If this session lacks the required access, the orchestrator hands these steps to Grok Bot through an available authorised channel.
-No handoff was dispatched by this configuration change. Live rule, Worker, R2 and destination checks remain pending.
+The relay records the routing work; independent inspection and the synthetic receipt/intake checks remain pending.
 
 Do not publish a destination address, sender details, real subjects/bodies, attachments or credentials in issues, logs or PRs.
 The shared Worker retains mail in R2 and forwards it to the existing destination. It does not retain attachments.
