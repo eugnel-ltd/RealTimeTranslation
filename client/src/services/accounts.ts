@@ -60,11 +60,14 @@ export function parseDeletion(value: unknown): DeletionReceipt {
 }
 
 /** Auth mutations intentionally do not use an account's revoked request lifetime. */
-export async function accountRequest(path: string, body?: Record<string, unknown>, signal?: AbortSignal): Promise<unknown> {
+export async function accountRequest(path: string, body?: Record<string, unknown>, signal?: AbortSignal, expectedAccount?: string): Promise<unknown> {
   const deadline = AbortSignal.timeout(15_000);
+  const headers = new Headers(body ? { 'Content-Type': 'application/json' } : undefined);
+  if (expectedAccount) headers.set('Eugnel-Expected-Account', expectedAccount);
   const response = await fetch(path, {
     credentials: 'include', cache: 'no-store', signal: signal ? AbortSignal.any([signal, deadline]) : deadline,
-    ...(body ? { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) } : {}),
+    headers,
+    ...(body ? { method: 'POST', body: JSON.stringify(body) } : {}),
   });
   let data: unknown;
   try { data = await response.json(); } catch { return invalid(); }

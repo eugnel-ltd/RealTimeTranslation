@@ -56,7 +56,7 @@ export default function AccountBootstrap() {
 
   if (state.status === 'owner') return <App key={state.runtime.id} runtime={state.runtime} />;
   if (state.status === 'account' && browser) return <App key={state.runtime.id} runtime={state.runtime}
-    accountControls={<AccountControls browser={browser} account={state.account} codePrompt={returned.code} onCodeVerified={() => setReturned({ code: false, failed: false })} />} />;
+    accountControls={<AccountControls browser={browser} account={state.account} expectation={browser.expectation} codePrompt={returned.code} onCodeVerified={() => setReturned({ code: false, failed: false })} />} />;
   return <>
     <main className="container mx-auto px-4 py-8">
       {returned.failed && <p role="alert">Sign-in did not complete. Try an existing sign-in method again.</p>}
@@ -70,7 +70,7 @@ export default function AccountBootstrap() {
         }}>Retry {state.retry === 'signout' ? 'sign out' : state.retry === 'deletion' ? 'deletion status' : 'account access'}</button>
         {state.retry === 'deletion' && <button onClick={() => { void browser.refresh(true); }}>Verify an existing sign-in method</button>}
       </>}
-      {state.status === 'signed-out' && browser && <AccountControls browser={browser} account={state.account} reauth={state.reauth} codePrompt={returned.code} onCodeVerified={() => setReturned({ code: false, failed: false })} />}
+      {state.status === 'signed-out' && browser && <AccountControls browser={browser} account={state.account} expectation={browser.expectation} reauth={state.reauth} codePrompt={returned.code} onCodeVerified={() => setReturned({ code: false, failed: false })} />}
       {state.status === 'deletion' && browser && <>
         <h2>Account deletion {state.receipt.state === 'completed' ? 'completed' : 'in progress'}</h2>
         <p role="status">{state.receipt.phase}</p><p>{state.cacheMessage}</p>

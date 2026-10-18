@@ -6,6 +6,7 @@ export interface AppRuntime {
   readonly signal: AbortSignal;
   readonly active: boolean;
   readonly accountMode?: boolean;
+  readonly accountId?: string;
   onRevoke(callback: () => void): () => void;
   revoke(): void;
   invalidate(): void;
@@ -24,7 +25,7 @@ export function createAppRuntime(storage: StorageScope, accountMode: boolean, on
   };
   return Object.freeze({
     id: globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random()}`,
-    storage, signal: abort.signal, accountMode,
+    storage, signal: abort.signal, accountMode, accountId: storage.accountId,
     get active() { return storage.active && !abort.signal.aborted; }, revoke,
     invalidate() {
       revoke();

@@ -5,6 +5,7 @@ export function isObject(value: unknown): value is Record<string, unknown> {
 export type StorageIdentity = Readonly<{ productId: string; environment: string; origin: string; accountId: string }>;
 export interface StorageScope {
   readonly active: boolean;
+  readonly accountId?: string;
   key(key: string): string;
   getItem(key: string): string | null;
   setItem(key: string, value: string): boolean;
@@ -24,6 +25,7 @@ export function createStorageScope(identity?: StorageIdentity): StorageScope {
   let active = true;
   const key = (name: string) => `${prefix}${name}`;
   return Object.freeze({
+    accountId: identity?.accountId,
     get active() { return active; }, key,
     getItem(name: string) { return active ? localStorage.getItem(key(name)) : null; },
     setItem(name: string, value: string) {

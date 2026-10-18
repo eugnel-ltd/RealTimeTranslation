@@ -14,13 +14,14 @@ function account(accountId = 'account_A', expiresAt = '2026-10-19T12:00:00Z') {
 }
 let browser: AccountBrowser;
 let current: unknown;
+let deletion: { jobId: string; state: string; phase: string; completedAt: string | null } | null;
 let stored: Map<string, string>;
 let writes: string[];
 let fetcher: ReturnType<typeof vi.fn<(path: string, init?: RequestInit) => Promise<Response>>>;
 let announced: ReturnType<typeof vi.fn<() => void>>;
 beforeEach(() => {
   vi.useFakeTimers(); vi.setSystemTime(new Date('2026-10-18T12:01:00Z'));
-  current = account(); stored = new Map([['user_settings', 'unassigned owner']]); writes = [];
+  current = account(); deletion = null; stored = new Map([['user_settings', 'unassigned owner']]); writes = [];
   vi.stubGlobal('localStorage', {
     getItem: (key: string) => stored.get(key) ?? null,
     setItem: (key: string, value: string) => { writes.push(key); stored.set(key, value); },
@@ -29,7 +30,7 @@ beforeEach(() => {
   vi.stubGlobal('window', { location: { assign: vi.fn() } });
   fetcher = vi.fn(async (path: string) => {
     if (path === '/api/account') return Response.json(current);
-    if (path === '/api/account/delete/status') return Response.json({ error: 'DELETE_TICKET_INVALID' }, { status: 401 });
+    if (path === '/api/account/delete/status') return deletion ? Response.json(deletion) : Response.json({ error: 'DELETE_TICKET_INVALID' }, { status: 401 });
     throw new Error(`Unexpected route ${path}`);
   });
   vi.stubGlobal('fetch', fetcher);
@@ -112,13 +113,20 @@ it('does not erase cache while deletion is pending or failed, then erases only t
   before.runtime.storage.setItem('user_settings', 'A');
   before.runtime.storage.setItem('transcriptionHistory', 'A history');
   stored.set('other-account', 'B');
-  fetcher.mockResolvedValueOnce(Response.json({ jobId: 'job_A', state: 'pending', phase: 'products' }, { status: 202 }));
+  fetcher.mockImplementationOnce(async () => {
+    current = { ...account(), session: null, ways: [] };
+    deletion = { jobId: 'job_A', state: 'pending', phase: 'products', completedAt: null };
+    return Response.json(deletion, { status: 202 });
+  });
   await browser.deleteAccount(); expect(before.runtime.active).toBe(false);
-  expect(fetcher).toHaveBeenLastCalledWith('/api/account/delete', expect.objectContaining({ body: JSON.stringify({ confirm: true }), credentials: 'include' }));
+  expect(fetcher).toHaveBeenCalledWith('/api/account/delete', expect.objectContaining({ body: JSON.stringify({ confirm: true }), credentials: 'include' }));
   expect(stored.get(before.runtime.storage.key('user_settings'))).toBe('A');
   fetcher.mockResolvedValueOnce(Response.json({ error: 'SERVICE_UNAVAILABLE' }, { status: 503 }));
   await browser.deletionStep(true); expect(stored.get(before.runtime.storage.key('user_settings'))).toBe('A');
-  fetcher.mockResolvedValueOnce(Response.json({ jobId: 'job_A', state: 'completed', phase: 'complete', completedAt: '2026-10-18T12:02:00Z' }));
+  fetcher.mockImplementationOnce(async () => {
+    deletion = { jobId: 'job_A', state: 'completed', phase: 'complete', completedAt: '2026-10-18T12:02:00Z' };
+    return Response.json(deletion);
+  });
   await browser.deletionStep(true);
   expect(stored.has(before.runtime.storage.key('user_settings'))).toBe(false);
   expect(stored.get('user_settings')).toBe('unassigned owner'); expect(stored.get('other-account')).toBe('B');
@@ -128,9 +136,16 @@ it('does not erase a remembered namespace for a different deletion receipt', asy
   await browser.refresh(); const before = browser.current;
   if (before.status !== 'account') throw new Error('expected account');
   before.runtime.storage.setItem('user_settings', 'A');
-  fetcher.mockResolvedValueOnce(Response.json({ jobId: 'job_A', state: 'pending', phase: 'products' }, { status: 202 }));
+  fetcher.mockImplementationOnce(async () => {
+    current = { ...account(), session: null, ways: [] };
+    deletion = { jobId: 'job_A', state: 'pending', phase: 'products', completedAt: null };
+    return Response.json(deletion, { status: 202 });
+  });
   await browser.deleteAccount();
-  fetcher.mockResolvedValueOnce(Response.json({ jobId: 'job_B', state: 'completed', phase: 'complete', completedAt: '2026-10-18T12:02:00Z' }));
+  fetcher.mockImplementationOnce(async () => {
+    deletion = { jobId: 'job_B', state: 'completed', phase: 'complete', completedAt: '2026-10-18T12:02:00Z' };
+    return Response.json(deletion);
+  });
   await browser.deletionStep(false);
   expect(stored.get(before.runtime.storage.key('user_settings'))).toBe('A');
 });
@@ -148,7 +163,7 @@ it('uses only fixed OAuth navigation routes after synchronously revoking the cur
   await browser.refresh(); const before = browser.current;
   browser.oauth('apple');
   if (before.status !== 'account') throw new Error('expected account');
-  expect(before.runtime.active).toBe(false); expect(window.location.assign).toHaveBeenCalledWith('/api/auth/apple/start');
+  expect(before.runtime.active).toBe(false); expect(window.location.assign).toHaveBeenCalledWith('/api/auth/apple/start?expectedAccount=account%3Aaccount_A');
 });
 
 it('accepts actual provider masks and rejects raw emails, unknown config, wrong scope and malformed receipts', () => {

@@ -24,7 +24,7 @@ it('aborts every scoped HTTP consumer and refuses late response bodies', async (
 });
 
 it('invalidates by actual paid-route 401 status and never accepts its body as account data', async () => {
-  const changed = vi.fn(); const lifetime = createAppRuntime(createStorageScope(), true, changed);
+  const changed = vi.fn(); const lifetime = createAppRuntime(createStorageScope({ productId: 'rtt', environment: 'preview', origin: 'https://rtt.example.test', accountId: 'account_A' }), true, changed);
   vi.stubGlobal('fetch', vi.fn(async () => Response.json({ error: 'Sign in required' }, { status: 401 })));
   await expect(apiJson('/api/config', undefined, lifetime)).rejects.toHaveProperty('name', 'AbortError');
   expect(lifetime.active).toBe(false); expect(changed).toHaveBeenCalledOnce();
