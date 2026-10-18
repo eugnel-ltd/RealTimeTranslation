@@ -2,6 +2,7 @@ import type * as speechsdk from 'microsoft-cognitiveservices-speech-sdk';
 import { toTranslatorCode } from '../../../worker/src/languages';
 import { fetchSpeechToken } from './api';
 import { isQuotaExhaustion } from './quota';
+import { assertRuntime, type AppRuntime } from './accountLifetime';
 
 export interface TranslationConfig {
   inputLanguage: string;
@@ -26,9 +27,10 @@ export class AzureSpeechService {
   private failStart: ((error: Error) => void) | null = null;
   private stopping: Promise<void> = Promise.resolve();
 
-  constructor(private readonly callbacks: SpeechCallbacks) {}
+  constructor(private readonly callbacks: SpeechCallbacks, private readonly runtime?: AppRuntime) {}
 
   async startTranslation(config: TranslationConfig) {
+    assertRuntime(this.runtime);
     config = { ...config };
     const stopping = this.stopTranslation();
     const session = this.session;
@@ -42,7 +44,7 @@ export class AzureSpeechService {
     stream.getTracks().forEach((track) => track.stop());
     if (session !== this.session) return;
 
-    const { token, region } = await fetchSpeechToken();
+    const { token, region } = await fetchSpeechToken(this.runtime);
     if (session !== this.session) return;
     const speechConfig = sdk.SpeechTranslationConfig.fromAuthorizationToken(token, region);
     this.applyLanguages(speechConfig, config, sdk);
@@ -116,7 +118,7 @@ export class AzureSpeechService {
     const recognizer = this.translationRecognizer;
     const session = this.session;
     try {
-      const { token } = await fetchSpeechToken();
+      const { token } = await fetchSpeechToken(this.runtime);
       if (session !== this.session) return;
       recognizer.authorizationToken = token;
     } catch (err) {

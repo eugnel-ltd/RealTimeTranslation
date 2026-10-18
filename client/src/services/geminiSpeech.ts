@@ -2,6 +2,7 @@ import { geminiLiveSetup } from '../../../shared/geminiLive';
 import { fetchGeminiToken, translateText, type GeminiToken } from './api';
 import { arrayBufferToBase64, floatTo16BitPcm, resample } from './pcm';
 import type { TranslationConfig } from './azureSpeech';
+import { assertRuntime, type AppRuntime } from './accountLifetime';
 
 type SpeechCallbacks = {
   onRecognizing: (original: string, translations: string[], detectedLanguage?: string) => void;
@@ -34,9 +35,10 @@ export class GeminiSpeechService {
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private cancelSocketStart: (() => void) | null = null;
 
-  constructor(private readonly callbacks: SpeechCallbacks) {}
+  constructor(private readonly callbacks: SpeechCallbacks, private readonly runtime?: AppRuntime) {}
 
   async start(config: TranslationConfig, mode: GeminiMode): Promise<void> {
+    assertRuntime(this.runtime);
     const stopping = this.stop();
     const id = this.session;
     await stopping;
@@ -71,14 +73,15 @@ export class GeminiSpeechService {
   }
 
   private current(session: Session): boolean {
-    return this.active === session && session.id === this.session;
+    return (!this.runtime || this.runtime.active) && this.active === session && session.id === this.session;
   }
 
   private async mintToken(session: Session): Promise<GeminiToken> {
     const { config, mode } = session;
     try {
-      return await fetchGeminiToken(mode, config.outputLanguage);
+      return await fetchGeminiToken(mode, config.outputLanguage, this.runtime);
     } catch {
+      assertRuntime(this.runtime);
       const target = config.outputLanguage ? `&target=${encodeURIComponent(config.outputLanguage)}` : '';
       return { token: '', expireTime: '', model: '', mode, wsUrl: '', proxyUrl: `/api/gemini-live?mode=${mode}${target}` };
     }
@@ -216,7 +219,7 @@ export class GeminiSpeechService {
     const timeout = setTimeout(() => abort.abort(), TRANSLATION_TIMEOUT_MS);
     try {
       const { translations } = await Promise.race([
-        translateText(original, targets, config.inputLanguage, abort.signal),
+        translateText(original, targets, config.inputLanguage, abort.signal, this.runtime),
         cancelled,
       ]);
       if (seed[0] && translations.length) translations[0] = seed[0];

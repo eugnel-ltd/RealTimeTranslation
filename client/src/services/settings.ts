@@ -13,7 +13,7 @@ import {
 import config, { isValidLanguage } from '../config';
 import { DEFAULT_HOTKEYS } from '../hotkeys';
 import type { UserSettings } from '../types';
-import { isObject, readStoredJson, writeStoredJson } from './browserStorage';
+import { isObject, readStoredJson, writeStoredJson, type StorageScope } from './browserStorage';
 
 const STORAGE_KEY = 'user_settings';
 
@@ -21,9 +21,11 @@ export class SettingsService {
   private static instance: SettingsService;
   private currentSettings: UserSettings;
 
-  private constructor() {
-    this.currentSettings = this.normalize(readStoredJson(STORAGE_KEY).value);
+  private constructor(private readonly storage?: StorageScope) {
+    this.currentSettings = this.normalize(readStoredJson(STORAGE_KEY, storage).value);
   }
+
+  public static forStorage(storage: StorageScope): SettingsService { return new SettingsService(storage); }
 
   public static getInstance(): SettingsService {
     if (!SettingsService.instance) SettingsService.instance = new SettingsService();
@@ -98,16 +100,18 @@ export class SettingsService {
   }
 
   public getSettings(): UserSettings {
+    if (this.storage && !this.storage.active) return this.getDefaultSettings();
     return { ...this.currentSettings, hotkeys: { ...this.currentSettings.hotkeys } };
   }
 
   public updateSettings(newSettings: Partial<UserSettings>): UserSettings {
+    if (this.storage && !this.storage.active) return this.getSettings();
     this.currentSettings = this.normalize({
       ...this.currentSettings,
       ...newSettings,
       hotkeys: { ...this.currentSettings.hotkeys, ...(newSettings.hotkeys ?? {}) },
     });
-    const saved = writeStoredJson(STORAGE_KEY, this.currentSettings);
+    const saved = writeStoredJson(STORAGE_KEY, this.currentSettings, this.storage);
     // Memory can already hold a failed prior choice. Every explicit retry must
     // still report failure when the older durable value could not be replaced.
     if (!saved && Object.prototype.hasOwnProperty.call(newSettings, 'saveTranscriptHistory')) {
@@ -117,8 +121,9 @@ export class SettingsService {
   }
 
   public resetToDefaults(): UserSettings {
+    if (this.storage && !this.storage.active) return this.getSettings();
     this.currentSettings = this.getDefaultSettings();
-    writeStoredJson(STORAGE_KEY, this.currentSettings);
+    writeStoredJson(STORAGE_KEY, this.currentSettings, this.storage);
     return this.getSettings();
   }
 }

@@ -1,15 +1,17 @@
 import { detectQuestion } from '../services/api';
 import type { QuestionDetector, QuestionDetectorInput, QuestionDetectorResult } from './types';
+import type { AppRuntime } from '../services/accountLifetime';
 
 /** Default detector: Worker Jev (TypeSafe System One), Gemini fallback server-side. */
 export class HttpQuestionDetector implements QuestionDetector {
+  constructor(private readonly runtime?: AppRuntime) {}
   async detect(input: QuestionDetectorInput): Promise<QuestionDetectorResult> {
     const result = await detectQuestion({
       segments: input.segments,
       windowSeconds: input.windowSeconds,
       lastAnsweredQuestion: input.lastAnsweredQuestion,
       threshold: input.threshold,
-    });
+    }, this.runtime);
     const probability = minDefined(
       result.probabilities.newQuestionFromOtherParty,
       result.probabilities.isInterviewQuestion,
