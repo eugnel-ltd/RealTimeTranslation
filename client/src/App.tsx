@@ -14,6 +14,7 @@ import {
   sliceFromQuestionStart,
   TAIL_WATCH_MS,
   windowForDetect,
+  windowForExtract,
   type WindowSegment,
 } from '../../shared/extractWindow';
 import { confirmSilence, createDetectGateState, nextDetectGate } from './detectors/detectGate';
@@ -229,15 +230,25 @@ const App: React.FC = () => {
   }, []);
 
   const windowedSegments = useCallback(
-    (extendFromIndex?: number | null) => {
+    () => {
       return windowForDetect(
         sessionFinals(),
         Date.now(),
         settings.answerWindowSeconds,
         DETECT_MAX_WORDS,
-        extendFromIndex,
       );
     },
+    [sessionFinals, settings.answerWindowSeconds],
+  );
+
+  const extractionSegments = useCallback(
+    (startIndex?: number | null) => windowForExtract(
+      sessionFinals(),
+      Date.now(),
+      settings.answerWindowSeconds,
+      startIndex,
+      lastAnsweredAtRef.current,
+    ),
     [sessionFinals, settings.answerWindowSeconds],
   );
 
@@ -465,7 +476,7 @@ const App: React.FC = () => {
 
         if (replace) {
           const startId = tailStartIdRef.current;
-          const extractSegs = windowedSegments(startId);
+          const extractSegs = extractionSegments(startId);
           const conversation = joinSegmentText(sliceFromQuestionStart(extractSegs, startId));
           if (!conversation || conversation === lastConversationRef.current) return;
           if (!aiAnswerPanelRef.current) return;
@@ -500,7 +511,7 @@ const App: React.FC = () => {
         if (!aiAnswerPanelRef.current) return;
         if (generation !== answerGenerationRef.current) return;
         const startId = resolveExtractStart(bStart, lastAnsweredEndIdRef.current, newestId);
-        const extractSegs = windowedSegments(startId);
+        const extractSegs = extractionSegments(startId);
         const plan = planAutoAnswer({
           windowSegments: extractSegs,
           startIndex: startId,
@@ -533,7 +544,7 @@ const App: React.FC = () => {
         });
       })();
     },
-    [clearSilenceTimer, runAnswer, windowedSegments, sessionFinals, settings.answerWindowSeconds, settings.questionThreshold],
+    [clearSilenceTimer, runAnswer, windowedSegments, extractionSegments, sessionFinals, settings.answerWindowSeconds, settings.questionThreshold],
   );
 
   useEffect(() => {
