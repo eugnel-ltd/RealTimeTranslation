@@ -2,7 +2,7 @@
 
 - Intent: #5; fix the independent P1 finding on 7b8cd7e.
 - Task type and level: infra-pipeline, level 2, Stop: merge.
-- Accepted by: pending desktop independent plan review before the source change.
+- Accepted by: desktop independent plan review of 4f2a6fa, 18 October 2026, before the source change. The same new ownership test bytes were retained at replacement commit 4791c61.
 
 ## Bounded change
 
@@ -18,3 +18,7 @@ After successful deployment, store its proved active deployment/version identity
 2. Run the new ownership tests on actual faulty 7b8cd7e code: failed/no-write submission with unrelated active change, same-source different attempt, intervening release before failed-health rollback, and intervening release before success claim all fail for the concrete unsafe action/claim. Freeze these tests before implementing ownership.
 3. Implement the bounded source fix only after independent plan approval; retain every newly frozen byte.
 4. Run all release/enforcement/recovery/ownership cases, app tests, types, lint and build; independent reviewer re-reviews only the fix diff. Actual Cloudflare attribution/rollback still needs secure live capability and protected-target rehearsal, disclosed separately.
+
+## Rebaseline evidence
+
+Replacement first-red CLI/health fixtures are frozen at c76bb36; recovery fixtures at 7b6a236. The only existing assertion adaptation is the root-approved read budget of three instead of two, strengthening the required fresh ownership observation; recovery/rollback outcomes are unchanged. Ownership tests 4791c61 are byte-identical to 4f2a6fa and reproduce three unsafe rollback paths plus the false healthy claim on actual faulty source (3 errors, 1 failure), not an invalid fixture response. Prior original/red histories remain on the two preserved branches named in the main plan.

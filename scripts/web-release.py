@@ -5,6 +5,7 @@ import json
 import os
 import re
 import sys
+import uuid
 
 sys.dont_write_bytecode = True
 from pr_evidence import Failure, Hold, ROOT, check_merge, command, sha
@@ -81,6 +82,38 @@ def deployment():
         raise Failure("active Worker deployment/rollback target is ambiguous") from error
 
 
+def attribute(active, attempt, commit):
+    """A changed deployment is ours only when its immutable version says so."""
+    _, version = active
+    try:
+        result = command(["npx", "--no-install", "wrangler", "versions", "view", version, "--name", "rtt", "--json"])
+        if result.returncode:
+            raise ValueError("version read failed")
+        record = json.loads(result.stdout)
+        annotations = record["annotations"]
+        if record["id"] != version or annotations["workers/tag"] != attempt or annotations["workers/message"] != f"RTT source {commit}":
+            raise ValueError("another release attempt")
+    except (Failure, ValueError, TypeError, KeyError) as error:
+        raise Failure("deployment UNKNOWN; active version is not proved to belong to this attempt") from error
+
+
+def still_current(owned):
+    try:
+        current = deployment()
+    except Failure as error:
+        raise Failure("deployment UNKNOWN; active identity cannot be freshly verified") from error
+    if current != owned:
+        raise Failure("deployment UNKNOWN; an intervening release changed the active identity")
+
+
+def recover(previous_version, owned):
+    # Cloudflare exposes no atomic compare-and-swap rollback. This read prevents
+    # undoing an already observed intervening release; operators must coordinate
+    # the remaining read/write interval rather than assume it is atomic.
+    still_current(owned)
+    rollback(previous_version)
+
+
 def apply(commit):
     if os.environ.get("GITHUB_ACTIONS") == "true":
         raise Hold("apply runs in isolated cloud, never on the public repository self-hosted runner")
@@ -89,13 +122,15 @@ def apply(commit):
         raise Hold("existing Cloudflare and Access capabilities must be configured before apply")
     if command(["npm", "run", "build"], timeout=300).returncode:
         raise Hold("release build failed")
-    deploy = ["npx", "--no-install", "wrangler", "deploy", "--var", f"DEPLOYMENT_SHA:{commit}"]
+    attempt = f"rtt-{uuid.uuid4().hex}"
+    deploy = ["npx", "--no-install", "wrangler", "deploy", "--var", f"DEPLOYMENT_SHA:{commit}",
+              "--tag", attempt, "--message", f"RTT source {commit}"]
     if command([*deploy, "--dry-run"], timeout=300).returncode:
         raise Hold("Worker dry deployment failed")
     previous_id, previous_version = deployment()
     # Recheck the immutable checkout and main after building, before the first write.
     preflight(commit)
-    print(f"WEB RELEASE SUBMITTING {commit}; rollback version {previous_version}", flush=True)
+    print(f"WEB RELEASE SUBMITTING {commit}; attempt {attempt}; rollback version {previous_version}", flush=True)
     try:
         deployed = command(deploy, timeout=300)
     except Failure:
@@ -104,40 +139,45 @@ def apply(commit):
         # A lost deploy response is unknown, never an invented failure/no-op. Read
         # provider state first, and roll back only a concretely changed deployment.
         try:
-            active_id, _ = deployment()
+            active = deployment()
         except Failure as error:
             raise Failure("deployment UNKNOWN; reconcile provider state before retry") from error
-        if active_id == previous_id:
+        if active[0] == previous_id:
             raise Hold("deployment command failed; previous deployment remains active")
-        rollback(previous_version)
+        attribute(active, attempt, commit)
+        recover(previous_version, active)
         raise Hold("deployment command failed after changing active deployment; rollback attempted")
     active_id, active_version = deployment()
     if active_id == previous_id:
         raise Failure("deployment receipt UNKNOWN; active deployment did not change")
+    owned = (active_id, active_version)
+    attribute(owned, attempt, commit)
     try:
         version = json.loads((ROOT / "package.json").read_text())["version"]
         if not isinstance(version, str) or not version:
             raise ValueError("invalid package version")
     except (OSError, ValueError, KeyError) as error:
-        rollback(previous_version)
+        recover(previous_version, owned)
         raise Failure("release package version cannot be read") from error
     try:
         health = command(["node", "--input-type=module", "-e", "import { checkUptime } from './scripts/uptime.mjs'; const r=await checkUptime({expectVersion:process.argv[1]}); console.log(JSON.stringify(r)); process.exitCode=r.exitCode;", f"{version}+{commit}"], timeout=45)
     except Failure as error:
-        rollback(previous_version)
+        recover(previous_version, owned)
         raise Hold("authenticated health receipt unavailable; rollback attempted") from error
     if health.returncode:
-        rollback(previous_version)
+        recover(previous_version, owned)
         raise Hold("authenticated exact-SHA health failed; rollback attempted")
     try:
         report = json.loads(health.stdout)
         if report.get("healthy") is not True or report.get("exitCode") != 0:
             raise ValueError("unhealthy")
     except (ValueError, AttributeError) as error:
-        rollback(previous_version)
+        recover(previous_version, owned)
         raise Hold("health receipt is invalid; rollback attempted") from error
+    still_current(owned)
     print(json.dumps({"state": "HEALTH_VERIFIED", "sha": commit, "deployment_id": active_id, "version_id": active_version,
-                      "rollback_version": previous_version, "log_check": "pending five-minute tail; release completion not claimed"}))
+                      "attempt": attempt, "rollback_version": previous_version,
+                      "log_check": "pending five-minute tail; release completion not claimed"}))
 
 
 def rollback(version):

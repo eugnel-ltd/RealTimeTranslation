@@ -8,6 +8,8 @@ The web release command defaults to preflight. It requires a clean checkout at c
 
 Only an explicit apply in an isolated cloud session can build or deploy. Before deployment it requires configured Cloudflare and Access capabilities, runs the dry deployment, captures the previous active single-version deployment, then deploys with the exact reviewed merge SHA in `DEPLOYMENT_SHA`. Authenticated health must verify that SHA. Failed deployment/health is a failure, with an explicit rollback to the captured previous version after a new deployment. The release report carries safe deployment/version identifiers; it never includes credentials or provider bodies. The operator separately records the five-minute log check and incident/release metadata before claiming release completion.
 
+Recovery attributes an active version using its exact version id, unique attempt tag and source-SHA message from Cloudflare before mutation. A fresh identity read immediately before rollback/health claims stops on an intervening deployment. An unowned/unreadable deployment remains UNKNOWN. Cloudflare does not supply atomic compare-and-swap rollback; operators coordinate the residual read/write interval.
+
 The self-hosted release-check workflow performs GitHub/git evidence checks only. It has no Cloudflare credentials and runs no app tests, dependency installation or deployment. Baseline acceptance and post-deploy operational acceptance are separate facts: evidence can establish enforcement without pretending an incomplete production baseline is ready.
 
 No visual changes, provider-key rotation, paid Actions, new Cloudflare products, synthetic fixture changes or automatic baseline/status promotion are in scope.
