@@ -41,7 +41,7 @@ The shared support-mail review uses AI-SDLC commit `b217812bca40c0b3d3ff1ba012ed
 - Clear Transcripts flushes pending final text to browser history, then clears the current transcript and answer display. It preserves saved history.
 - History session deletion rewrites browser storage. It does not delete the current displayed transcript or copies at providers.
 - Settings saves personal context and extra notes in the browser across reloads.
-- Future transcript history starts off without a positive choice. Turning it off stops writes and pending retries; it does not erase old history. Enabling it does not save text captured while off.
+- Future transcript history starts off without a positive choice. Turning it off stops writes and pending retries; it does not erase old history. Enabling it does not add final results already completed while off. A later final result may include audio already in progress because provider buffering does not expose a trustworthy start time.
 - The settings service has a reset method, but no reset UI caller was found. Do not promise a reset button.
 - Storage writes can fail, for example when the browser blocks storage or reaches its limit. The [helper](../../client/src/services/browserStorage.ts) reports failure. Transcript code retains unsaved entries for a later attempt.
 - KV profile and support-mail requests need operator handling. No customer deletion UI or measured request SLA exists in this implementation.

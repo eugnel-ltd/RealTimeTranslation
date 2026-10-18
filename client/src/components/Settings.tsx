@@ -155,6 +155,7 @@ const Settings: React.FC<SettingsProps> = ({ isOpen, onClose, initialSettings, o
                 </label>
                 <p className="text-sm text-gray-500 dark:text-gray-400">
                   Off until you choose it and save. Switching off stops future history writes; it keeps existing history.
+                  A future final result can include audio already in progress when you switch on, because providers buffer audio.
                   Delete saved sessions in History or clear this site's browser data.{' '}
                   <a href="/legal/data-use/">Read about data use</a>.
                 </p>

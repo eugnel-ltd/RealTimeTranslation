@@ -13,6 +13,7 @@ export interface TranscriptEntry {
   sourceLanguage?: string;
   targetLanguage?: string;
   isSaved?: boolean;
+  historyConsentGeneration?: number;
 }
 
 export interface TranscriptionRecord {

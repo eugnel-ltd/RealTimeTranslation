@@ -16,7 +16,7 @@ Policy copy describes the current free, private adult professional product, prov
 
 Root approved a positive choice before the app saves optional history. Add an explicit saveTranscriptHistory preference. Treat only true as a positive choice. Keep it off for old settings that lack this choice. Do not erase or migrate old history, notes or settings. Use a plain control with the existing styles. Say that it saves future final transcripts in this browser. If the user switches it off, stop future writes and keep old history.
 
-Use a current ref to gate the queue and flush. A live session must honour withdrawal at once. Clear only the in-memory pending write queue on withdrawal. Do not enqueue text recorded while off for later retroactive saving. Keep current transcript display, old durable history, user-saved notes and selected settings. When opted in, preserve immediate-stop, delayed-stop, retry, unload and Clear Transcripts flush behavior. The user still chooses any deletion of saved history.
+Use a current ref to gate the queue and flush. A live session must honour withdrawal at once. Clear only the in-memory pending write queue on withdrawal. Do not later add final results already completed while off. Skip known interim results that span a choice change, using an in-memory generation. A future final result may include audio already in progress because the provider does not expose a trustworthy audio start time. Keep current transcript display, old durable history, user-saved notes and selected settings. When opted in, preserve immediate-stop, delayed-stop, retry, unload and Clear Transcripts flush behavior. The user still chooses any deletion of saved history.
 
 Keep necessary Access/security and user-requested saved settings distinct. Add no fake analytics consent switch or tracking banner. Browser microphone permission stays real. Explain notice to participants and lawful recording. Browser permission does not cover other speakers.
 
@@ -37,3 +37,7 @@ Earlier legal research/test lanes each exited 1 after 20 seconds. Root permits d
 ## Storage failure detail
 
 The browser can refuse a settings write while an older positive choice remains on disk. A changed history choice still applies in memory, but the settings dialog must report that it could not save it. It must explain the reload limit and site-data removal. A separate test proves that failure without altering the first frozen tests or erasing stored data.
+
+## Reviewed contract clarification
+
+Root approved this clarification on 18 October 2026: the positive choice controls future final results, not audio start time. Preserve the accepted mid-session next-final behavior. Do not force a restart or promise that no buffered speech predates the choice. The settings and data-use text must state this limit. Repeated failed saves must keep their visible error; a memory choice does not prove a durable write. New frozen tests cover both retry failure and known interim spans without changing the earlier five files.

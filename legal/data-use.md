@@ -12,7 +12,7 @@ Azure speech uses the Microsoft service directly from the browser. Gemini Live u
 
 ## Your browser choices
 
-The app saves future final transcripts in this browser only after you enable “Save future final transcripts in this browser” in Settings and save the choice. It starts off when no positive choice exists. You can switch it off to stop future history writes. The app never saves text from the off period later.
+The app saves future final transcripts in this browser only after you enable “Save future final transcripts in this browser” in Settings and save the choice. It starts off when no positive choice exists. You can switch it off to stop future history writes. The app does not later add final transcripts completed while saving was off. It also skips an utterance when an interim result spans a change of choice. Providers can buffer audio: a future final result may include speech already in progress when you enable saving. This choice controls local storage of received results, not the start time of audio capture.
 
 Your existing saved history and notes stay when you switch saving off. Delete saved sessions in History, clear saved context or notes and save, or clear this site's browser data. When you enable saving, Clear Transcripts first flushes pending final text to history, then clears the current display. It does not delete saved history or provider copies. Browser history and saved settings have no automatic expiry in this app. If the browser refuses a changed history choice, Settings reports that it applies only until reload. Clear site data to remove any older stored choice. The browser can block, clear or evict storage. Keep your own copy of material you need.
 
