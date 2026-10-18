@@ -27,7 +27,7 @@
     "yaml": "2.8.3"
   },
   "dependencies": {
-    "eugnel-platform": "github:eugnel-ltd/eugnel-platform#c655a343c77982f615f53479a5d4bf9cb9d7fd74",
+    "eugnel-platform": "github:eugnel-ltd/eugnel-platform#1c50ea103198dd274156d7c3a8a807e5bddddd99",
     "jose": "^6.1.0"
   },
   "engines": {
