@@ -4,7 +4,7 @@ The [inventory](data-inventory.md) records source facts and gaps for [#9](https:
 
 RTT uses shared code from `eugnel-platform`, company facts from `eugnel-hq`, and the AI-SDLC delivery process. Do not copy a company record or legal renderer into this repository.
 
-The shared templates have no solicitor review. On 18 October 2026, the owner authorised current versions without a solicitor for now. Disclose that status in the policy PR. See the [recorded decision](https://github.com/eugnel-ltd/eugnel-platform/blob/d0d01efb69b61522750f21beb0b8fbeb5d88d596/docs/owner-decisions.md).
+The shared templates have no solicitor review. On 18 October 2026, the owner authorised current versions without a solicitor for now. Disclose that status in the policy PR. See the [recorded decision](https://github.com/eugnel-ltd/eugnel-platform/blob/20cab4d756e1c5e71adc54734350d7f0b81f8ee5/docs/owner-decisions.md).
 
 ## Prepare a private draft
 
@@ -60,7 +60,7 @@ These diagnostics do not list every publication gap. The renderer checks require
 5. Obtain independent review of the exact source and output. Confirm policy links against the actual product through the authorised release process.
 6. Keep issue #9 and the legal baseline open until the required facts, pages and delivery checks are complete.
 
-Shared-template correction is a separate change. It does not establish RTT's provider terms or implement consent controls. Do not publish a consent sheet that promises switches the app lacks. Store answer sheets are not evidence of a store release.
+The bounded [shared-template correction](https://github.com/eugnel-ltd/eugnel-platform/pull/45) is merged. It does not complete RTT policies or the legal baseline. It does not establish RTT's provider terms or implement consent controls. Do not publish a consent sheet that promises switches the app lacks. Store answer sheets are not evidence of a store release.
 
 ## Requests and retention evidence
 
