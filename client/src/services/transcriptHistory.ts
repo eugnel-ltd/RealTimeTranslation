@@ -1,5 +1,5 @@
 import type { RecordingSession, TranscriptEntry, TranscriptionRecord } from '../types';
-import { isObject, readStoredJson, writeStoredJson } from './browserStorage';
+import { isObject, readStoredJson, writeStoredJson, type StorageScope } from './browserStorage';
 
 const HISTORY_KEY = 'transcriptionHistory';
 
@@ -34,14 +34,14 @@ function parseHistory(value: unknown): RecordingSession[] {
   });
 }
 
-export function loadTranscriptHistory(): RecordingSession[] {
-  return parseHistory(readStoredJson(HISTORY_KEY).value);
+export function loadTranscriptHistory(storage?: StorageScope): RecordingSession[] {
+  return parseHistory(readStoredJson(HISTORY_KEY, storage).value);
 }
 
 /** Empty result means nothing was durably saved; the caller retains its retry queue. */
-export function persistTranscriptEntries(entries: TranscriptEntry[]): string[] {
+export function persistTranscriptEntries(entries: TranscriptEntry[], storage?: StorageScope): string[] {
   if (entries.length === 0) return [];
-  const stored = readStoredJson(HISTORY_KEY);
+  const stored = readStoredJson(HISTORY_KEY, storage);
   if (!stored.available) return [];
   const history = parseHistory(stored.value);
   const sessions = new Map(history.map((session) => [session.sessionId, session]));
@@ -75,15 +75,15 @@ export function persistTranscriptEntries(entries: TranscriptEntry[]): string[] {
     }
     savedIds.push(entry.id);
   }
-  return !changed || writeStoredJson(HISTORY_KEY, history) ? savedIds : [];
+  return !changed || writeStoredJson(HISTORY_KEY, history, storage) ? savedIds : [];
 }
 
 /** Leave the displayed sessions intact when the requested deletion cannot be saved. */
-export function deleteTranscriptSession(sessionId: string): RecordingSession[] | null {
-  const stored = readStoredJson(HISTORY_KEY);
+export function deleteTranscriptSession(sessionId: string, storage?: StorageScope): RecordingSession[] | null {
+  const stored = readStoredJson(HISTORY_KEY, storage);
   if (!stored.available) return null;
   const history = parseHistory(stored.value).filter((session) => session.sessionId !== sessionId);
-  return writeStoredJson(HISTORY_KEY, history) ? history : null;
+  return writeStoredJson(HISTORY_KEY, history, storage) ? history : null;
 }
 
 let nextId = 0;

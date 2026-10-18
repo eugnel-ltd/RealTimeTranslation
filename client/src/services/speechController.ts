@@ -2,6 +2,7 @@ import { AzureSpeechService, type TranslationConfig } from './azureSpeech';
 import { GeminiSpeechService } from './geminiSpeech';
 import { rememberQuotaFallbackForMonth, shouldPreferFallbackThisMonth } from './fallbackMemory';
 import type { SpeechEngineMode } from '../types';
+import { assertRuntime, type AppRuntime } from './accountLifetime';
 
 type Callbacks = {
   onRecognizing: (original: string, translations: string[], detectedLanguage?: string) => void;
@@ -20,7 +21,7 @@ export class SpeechController {
   private starting = false;
   private fallback: Promise<void> | null = null;
 
-  constructor(private readonly callbacks: Callbacks) {
+  constructor(private readonly callbacks: Callbacks, private readonly runtime?: AppRuntime) {
     this.azure = new AzureSpeechService({
       onRecognizing: (...args) => { if (this.activeEngine === 'azure') this.callbacks.onRecognizing(...args); },
       onRecognized: (...args) => { if (this.activeEngine === 'azure') this.callbacks.onRecognized(...args); },
@@ -33,25 +34,27 @@ export class SpeechController {
           if (session === this.session && !this.starting) this.handleError('gemini', error instanceof Error ? error.message : 'Failed to start Gemini fallback');
         });
       },
-    });
+    }, runtime);
     this.gemini = new GeminiSpeechService({
       onRecognizing: (...args) => { if (this.activeEngine === 'gemini') this.callbacks.onRecognizing(...args); },
       onRecognized: (...args) => { if (this.activeEngine === 'gemini') this.callbacks.onRecognized(...args); },
       onError: (error) => this.handleError('gemini', error),
-    });
+    }, runtime);
   }
 
   async start(config: TranslationConfig, mode: SpeechEngineMode) {
+    assertRuntime(this.runtime);
     const stopping = this.stop();
     const session = this.session;
     await stopping;
+    assertRuntime(this.runtime);
     if (session !== this.session) return;
     this.config = { ...config };
     this.mode = mode;
     this.starting = true;
     try {
       let preferFallback = false;
-      try { preferFallback = mode === 'auto' && shouldPreferFallbackThisMonth(); } catch { /* Prefer Azure when storage is unavailable. */ }
+      try { preferFallback = mode === 'auto' && shouldPreferFallbackThisMonth(this.runtime?.storage); } catch { /* Prefer Azure when storage is unavailable. */ }
       if (mode === 'gemini-translator' || mode === 'gemini-live-translate' || preferFallback) {
         this.activeEngine = 'gemini';
         if (preferFallback) this.callbacks.onNotice('Using Gemini transcription + translation this month after a previous Azure Speech quota limit.');
@@ -75,8 +78,8 @@ export class SpeechController {
     const config = this.config;
     this.activeEngine = null;
     await this.azure.stopTranslation().catch(() => undefined);
-    if (session !== this.session || !config) return;
-    try { rememberQuotaFallbackForMonth(); } catch { /* Storage restrictions must not prevent fallback. */ }
+    if (session !== this.session || !config || (this.runtime && !this.runtime.active)) return;
+    try { rememberQuotaFallbackForMonth(this.runtime?.storage); } catch { /* Storage restrictions must not prevent fallback. */ }
     if (this.mode === 'azure') {
       this.activeEngine = 'azure';
       this.handleError('azure', 'Azure Speech quota exhausted (Azure only mode).');
