@@ -31,7 +31,10 @@ class FakeSocket {
   readyState = 1;
   onopen?: () => void;
   onclose?: (event: unknown) => void;
-  send = vi.fn();
+  onmessage?: (event: { data: string }) => void;
+  send = vi.fn((data: string) => {
+    if (JSON.parse(data).setup) queueMicrotask(() => this.onmessage?.({ data: '{"setupComplete":{}}' }));
+  });
   close = vi.fn(() => { this.readyState = 3; });
   constructor() { sockets.push(this); queueMicrotask(() => this.onopen?.()); }
 }
