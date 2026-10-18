@@ -41,10 +41,11 @@ No application, renderer, shared template, legal policy content, consent control
 
 ## Results
 
-- Exact current base `470ed87e6a036387391f6fce60caaec582e97a42` built successfully. Real local Chromium 154.0.8037.57 passed nine consent/content checks and all four actual policy routes on 18 October 2026 at 11:07 UTC, with zero refused or unexpected requests. The original scratch checker is preserved; the new scratch copy adds only the explicit read-only account-bootstrap fixture, loopback port and evidence-output paths.
+- Exact current base `470ed87e6a036387391f6fce60caaec582e97a42` built successfully. After correcting the installed dependencies, real local Chromium 154.0.8037.57 passed nine consent/content checks and all four actual policy routes on 18 October 2026 at 11:11 UTC, with zero refused or unexpected requests. The original scratch checker is preserved; the new scratch copy adds only the explicit read-only account-bootstrap fixture, loopback port and evidence-output paths.
 - History default-off, positive choice/reload, repeated failed withdrawal, successful retry/reload and preservation of existing history/notes passed. Policy contacts, pending ICO state, free-service claims, script-free output and navigation passed. Exact route hashes are in the legal README.
 - The installed, reviewed `eugnel-platform` pin `ed18319bfccfe250d25b415caa997efca816db11` rendered the actual manifest-backed privacy answers successfully. SHA-256: `2ba45d4ad6b22c330c89b7a54a33323554d3d289b484d4251bc178562f7d01ff`. All eleven data categories, current/conditional scope, no-tracking entries and deletion contact were inspected. Generic sheets remain scratch output, not published assets or submitted store forms.
 - The status/docs change leaves current free/private processing, conditional account facts, policy source, canonical company snapshot, renderer, application and frozen tests unchanged. Protected remote delivery, provider project eligibility and account activation acceptance remain explicitly separate. Final exact-head build/output comparison, checks and independent verdict belong to this change's PR evidence.
+- Ordinary integration of main `2aaf344b10ac192011f8fb3988fa6caaee61b812` retains the separately reviewed listing completion. Relative to that base the only manifest change is legal done. All policies, CSS and other built assets must remain byte-identical to the exact current-source proof; the publishing gate still requires accounts, observability and support.
 
 ## Verification setup correction
 
