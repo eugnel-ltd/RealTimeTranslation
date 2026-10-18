@@ -87,6 +87,11 @@ async function routeApi(request: Request, env: WorkerEnv, url: URL, ctx?: Execut
   const method = request.method.toUpperCase();
   log({ message: 'api', method, path: pathname });
 
+  const origin = request.headers.get('Origin');
+  if (!['GET', 'HEAD'].includes(method) && origin !== null && origin !== url.origin) {
+    return errorJson('Invalid request origin', 403);
+  }
+
   if (pathname === '/api/health' && method === 'GET') {
     return json({ ok: true });
   }
