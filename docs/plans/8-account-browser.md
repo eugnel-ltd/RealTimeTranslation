@@ -1,0 +1,47 @@
+# Plan: #8 verified browser accounts and revocable local state
+
+- Intent: #8, browser slice of the shared D1/Workers account migration.
+- Spec: accepted `eugnel-platform/docs/specs/rtt-8-identity.md` and its matching plan, currently in `/workspace/work/platform-identity-service`.
+- Task type and level: feature at level 2; this slice stops at merge. It does not enable accounts, deploy resources, establish the release baseline, or claim the complete migration accepted.
+- Accepted by: pending independent risky-plan review by the orchestrator, before source changes.
+
+## Files that change
+
+- `client/src/main.tsx`, new account bootstrap/control components and typed account client: verify `GET /api/account` before mounting any settings, theme, history, speech or fallback consumer. Render loading/unavailable, signed-out, deletion progress, explicitly disabled owner mode, or the verified account. Keep the four legal links available outside the mounted application as well.
+- `client/src/services/browserStorage.ts`, settings/history/fallback services: explicit immutable storage scopes capture product, environment, origin and canonical account ID. Scope revocation blocks reads and writes. Account scopes never consult unassigned owner keys; disabled mode retains those keys and existing behaviour. No global mutable account prefix or identity/token persistence.
+- New account lifetime/request helper, `services/api.ts`, speech services/controller, detector, `App.tsx`, `Settings.tsx`, `History.tsx`, `ThemeContext.tsx`: thread the captured scope through every storage and API consumer. Invalidating a mounted lifetime first revokes storage and aborts requests, then synchronously stops speech, cancels detection/timers/answers, clears queues and rendered personal state. Async results check their captured lifetime before callbacks and persistence. Preserve all existing history consent generations and failed explicit-save errors.
+- Account forms/buttons reuse existing form/control styles; no stylesheet, layout, typography or existing class changes. Provide email + Turnstile code start/verify, enabled Google/Apple navigation, pending Google-code cancel, sign out, account switching through sign out, linking/reauthentication through existing methods, delete confirmation, fresh-proof retry and durable deletion status/advance controls. Browser storage never holds cookies/tokens, email addresses, deletion tickets or session records.
+- New typed regression files and test helper under `tests/`: production bootstrap, actual application lifecycle, scoped storage and API/control behaviour. Existing frozen tests stay byte-for-byte unchanged.
+
+## Stable API contract
+
+The service author confirmed these same-origin routes on 18 October 2026. All fetches include cookies; mutations use JSON and the browser's same-origin Origin. No request accepts a browser-selected account ID.
+
+- `GET /api/account`: `{enabled:false}` is the only owner-mode fallback. Enabled response has `{enabled:true,scope:{productId:'rtt',environment,origin},session:null|{accountId,authenticatedAt,expiresAt},ways:[{provider,email:masked|null}],capabilities:{email,google,apple,siteKey}}`. Malformed scope/session/capabilities, unknown mode, 503 or network failure stay unavailable without storage reads. Validate scope origin equals the current origin, product is RTT, IDs/dates are bounded and expiry is in the future before mounting.
+- Signed-out bootstrap checks `GET /api/account/delete/status`. `401 DELETE_TICKET_INVALID` means normal sign-in; a valid pending/completed receipt resumes deletion without reading HttpOnly cookies. An unverifiable deletion status remains an error rather than a fabricated completion.
+- `POST /api/auth/email/start {email,turnstile}`; `POST /api/auth/email/verify {email,code}`. Success re-verifies account; `{deleting:true}` resumes deletion status instead. Turnstile uses only the public site key, explicit widget lifecycle and expired/error-token clearing.
+- Navigate only to fixed `GET /api/auth/google/start` or `/api/auth/apple/start`. The server distinguishes linking/reauthentication from sign-in. Fixed return `/` may contain static `auth_error` or `auth_code=1`; display a bounded message/code-entry prompt and clear only those URL parameters. `POST /api/auth/google/cancel {}` cancels the pending flow.
+- `POST /api/auth/signout {}` cancels flows and revokes the cookie. Revoke the local lifetime before awaiting it. A failed signout stays unavailable with retry; never remount an old captured account as a fallback.
+- `POST /api/account/delete {}`: fresh proof required (`403 REAUTH_REQUIRED` otherwise), success202 `{jobId,state:'pending',phase}` clears the session and sets a private deletion cookie. `GET /api/account/delete/status` and `POST /api/account/delete/advance {}` return `{jobId,state:'pending'|'completed',phase,completedAt:null|ISO}`. Retain the initiating storage scope only in memory, revoked immediately on delete. Remove only that exact account's three known cache keys after a verified completed receipt; do not enumerate/clear storage. On reload, absent a verified account identity, show completion without guessing whose cache to remove. Explain remaining browser data/other devices using the accepted legal wording.
+
+## Order of work
+
+1. Commit this plan, obtain root's independent risky-plan approval, and attempt one bounded vendor test handoff (30 seconds maximum; record an exit-1 fallback).
+2. Install locked dependencies, write typed tests, and run trusted secret scan/typecheck/lint plus the test harness before freezing. Capture real old-source failures: production mounting reads owner settings before account verification; two mounted accounts share settings/history/fallback keys; retained callbacks can write after an account lifetime ends. New API exports must not be the sole reason the first-red proof fails. Record semantic baseline failures with compatible old-code adapters when necessary, without changing frozen assertions afterward.
+3. Commit frozen tests separately, implement scopes/bootstrap and complete functional controls, then wire every personal-state consumer through its captured lifetime. Keep disabled mode compatibility and old tests intact.
+4. Exercise delayed speech startup/recognition, token refresh, detection, translation, profile saves and streaming answers around signout, switch, expiry, delete and cross-tab hints. Cross-tab `storage`/BroadcastChannel messages carry a random change hint only, invalidate immediately and re-verify server state; they never establish identity. Poll/focus revalidation and an expiry timer cover server revocation/idle tabs. New account instances use React keys plus revoked lifetimes; stale server replies cannot replace a newer bootstrap generation.
+5. Run full JS and Python suites, typecheck, lint, build/bundle guard, trusted secret scan, frozen-test and diff checks. Record actual API integration/local browser proof separately from mocked browser acceptance; do not claim live providers/deployment validated by stubs.
+6. Provide exact clean head, first-red and green evidence and all limitations for independent review. Resolve material findings before root's merge/publication.
+
+## Risks and proof
+
+- Cross-account storage leakage: namespaces are constructed only from verified server scope/account and captured by object identity. Test two accounts, environment/origin separation, invalid scopes, preservation of all legacy keys, stale writes after revocation and only confirmed exact-key deletion.
+- Queued work outliving a session: scope/controller revocation is synchronous, not dependent on React effect cleanup. Actual App retained callbacks and delayed fetches must neither update state nor persist nor start downstream paid work after revocation. Abort signals reach token, translation, detector, profile and stream requests. Gemini's token-error WebSocket fallback must not run after an expired/revoked account.
+- Bootstrap races/configuration errors: no fallback on missing/unknown mode, invalid response, failed fetch or enabled signed-out. Deferred response tests prove old account bootstrap cannot overwrite a later verification. Only the explicit disabled response accesses legacy settings.
+- Deletion retries: pending/failed jobs do not delete browser cache or claim completion; stale proof offers existing-method reauth; successful proof resumes the fixed job. No arbitrary account ID, raw token, ticket or full email in storage/hints/logs. Reload completion cannot erase an unverified account cache.
+- Consent regression: retain the complete frozen legal/history tests, including repeated failed Save, known interim spans across consent changes, future-final-result contract, opt-out retry clearing and legal footer. Account revocation must discard retries rather than flushing across identity boundaries.
+- Appearance changes: no CSS/config/design changes; existing class/layout blocks remain intact except inserting functional controls into existing forms/available content slots. Independent reviewer compares the actual source diff.
+
+## Divergences
+
+- None.
