@@ -41,9 +41,59 @@ sentry:
   project: rtt
   scope: server
 
-# Partial processor facts for the planned integration; legal baseline stays missing.
+# Current private web processing; provider sources are in docs/legal/provider-evidence.md.
 legal:
+  audience: general
+  effective: "2026-10-18"
+  data:
+    - category: Live microphone audio and transcript text
+      purpose: Requested speech recognition, translation and optional question detection or answers
+      basis: Legitimate interests in providing the authorised owner's requested professional tool, subject to participant notice and a lawful basis for any third-party data
+      retention: Audio is processed as a live stream without app audio-file storage; current transcript and up to 20 answers stay in memory; provider periods are described in Data use
+      linked: "Yes"
+    - category: Optional browser transcript history
+      purpose: Keep future final transcripts only after a positive saved-history choice
+      basis: Consent for optional browser history storage, which can be withdrawn for future writes
+      retention: No app expiry; until the user deletes the session, clears site data or the browser removes it; turning saving off preserves existing history
+      linked: "Yes"
+    - category: Browser preferences, personal context and extra notes
+      purpose: Remember requested settings and include selected context or notes in optional AI answers
+      basis: Legitimate interests in providing the requested settings and answer functions; browser storage is requested through the settings controls
+      retention: No app expiry; clear the fields and save or clear this site's browser data; selected material sent to providers follows their periods
+      linked: "Yes"
+    - category: Candidate profile names and markdown
+      purpose: Store the owner's selected profile and add its content to requested AI answers
+      basis: Legitimate interests in the authorised professional workflow, subject to a lawful basis and safeguards for any third-party profile data
+      retention: No automatic KV expiry; until overwritten or removed by an operator; provider copies are separate
+      linked: "Yes"
+    - category: Access identity, IP address and operational metadata
+      purpose: Authenticate the authorised owner, prevent abuse and investigate service errors
+      basis: Legitimate interests in securing and operating the private service
+      retention: Workers Paid logs follow Cloudflare's current seven-day period; Access periods depend on its plan and exports; the app does not create an account database
+      linked: "Yes"
+    - category: Support email sender, recipient, subject, body and timestamps
+      purpose: Receive and resolve support and privacy requests
+      basis: Legitimate interests in responding to requests and maintaining the service; legal obligation where a data right applies
+      retention: Existing support mailbox and R2 records have no configured automatic expiry; an operator handles removal requests and any continuing legal need
+      linked: "Yes"
+    - category: Planned minimal server failure reports
+      purpose: Diagnose server failure categories when Sentry reporting is configured
+      basis: Legitimate interests in service reliability and security
+      retention: No app queue or backfill; the live Sentry project, region and retention must be established before activation
+      linked: "No"
   processors:
+    - name: Microsoft Azure Speech and Translator
+      purpose: Live speech transcription and translation, plus text translation; Microsoft publishes no-trace processing for these modes
+      location: Speech is configured for UK South; Translator and service metadata follow Microsoft terms, not a blanket UK-only guarantee
+    - name: Google Gemini API
+      purpose: Optional live speech, text translation fallback, question extraction and answers; UK API clients require an eligible Paid Services project
+      location: International processing under applicable Google terms; no specific project data region is claimed
+    - name: TypeSafe AI, Inc.
+      purpose: Optional transcript-window question detection; public privacy terms exclude training on API input and DPA retention is purpose-based
+      location: United States hosting, with the published DPA and UK transfer terms
+    - name: Cloudflare, Inc.
+      purpose: Hosting, Access authentication, request security, profile KV, support email routing and R2 records
+      location: Global service infrastructure under Cloudflare's DPA and UK transfer terms; no additional regional restriction is claimed
     - name: Sentry (Functional Software Inc.)
-      purpose: Planned server diagnostics using fixed failure categories and route/status tags; enabled only with SENTRY_DSN
-      location: Project data region not yet confirmed; verify pgnetwork/rtt before activation
+      purpose: Planned server diagnostics using fixed failure categories and route/status tags, only when reporting is configured
+      location: Planned project region is not established; verify it before reporting is activated

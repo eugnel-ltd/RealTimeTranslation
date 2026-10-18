@@ -1,12 +1,12 @@
 # RTT data inventory
 
-This is internal evidence for issue [#9](https://github.com/eugnel-ltd/RealTimeTranslation/issues/9), dated 18 October 2026. It prepares a later policy draft. The legal baseline remains `missing`.
+This is internal evidence for issue [#9](https://github.com/eugnel-ltd/RealTimeTranslation/issues/9), dated 18 October 2026. It supports the linked legal pages. [Provider evidence](provider-evidence.md) resolves the published terms and retention facts. Live delivery evidence remains separate; the legal baseline stays `missing` until acceptance is verified.
 
 RTT is free. Cloudflare Access limits use to the owner. RTT has no customer signup, account-delete route, checkout or payment integration. Shared D1 identity is an approved direction, not a deployed RTT feature.
 
 ## Sources and company facts
 
-The source review uses RTT commit `557988c0c490c9ae191eba642f11bd541df752aa`. Links below point to files in this repository. A code path proves a possible flow. It does not prove which provider configuration is live.
+The original source review uses RTT commit `557988c0c490c9ae191eba642f11bd541df752aa`. The functional #9 change adds positive opt-in before future history writes; it preserves old stored data and notes. Links below point to files in this repository. A code path proves a possible flow. It does not prove which provider configuration is live.
 
 Company facts come from [eugnel-hq/company/company.yaml](https://github.com/eugnel-ltd/eugnel-hq/blob/3941a3527ef76a808587a3df85148b9a2b6724dd/company/company.yaml). Read the current canonical file for each draft. Do not create a second company record here.
 
@@ -24,7 +24,7 @@ Provider retention, legal role, location and transfer terms remain unverified un
 | Transcript windows and last answered question for question detection | Browser → Worker → TypeSafe Jev at `api.typesafe.ai/v1/systemone` when configured. Automatic mode can use Google Gemini when TypeSafe is unconfigured. Other failure paths can pause detection. | Bounded working windows are not a provider retention limit. No detector-result database was found. | [Detection route](../../worker/src/detect-question.ts), [TypeSafe adapter](../../worker/src/typesafe.ts) |
 | Question, recent conversation, hints, prior question, language/template choices, optional context/notes and selected profile for AI answers | Browser → Worker → Google Gemini streaming API. The Worker adds the selected profile from KV. | Current answer and up to 20 Q&A items stay in React memory. No Q&A persistence call was found. Transcript history is separate. | [App answer state and request](../../client/src/App.tsx), [answer route](../../worker/src/answer.ts) |
 | Latest answer copied by the user | The Copy action sends current or latest answer text to the system clipboard. | RTT does not control clipboard history, sync or other apps that read it. | [App copy action](../../client/src/App.tsx) |
-| Final transcript history: original/translated text, languages, IDs and timestamps | Browser `localStorage`, key `transcriptionHistory`. No server history upload was found. | No app TTL or count cap. History permits session deletion. Browser site-data removal or eviction can also remove it. Deletion affects this browser's saved list, not provider copies. | [History storage](../../client/src/services/transcriptHistory.ts), [History control](../../client/src/components/History.tsx) |
+| Final transcript history: original/translated text, languages, IDs and timestamps | Browser `localStorage`, key `transcriptionHistory`. No server history upload was found. | Only future final text is saved after an explicit positive choice. No app TTL or count cap. History permits session deletion. Browser site-data removal or eviction can also remove it. Deletion affects this browser's saved list, not provider copies. | [History storage](../../client/src/services/transcriptHistory.ts), [History control](../../client/src/components/History.tsx) |
 | Preferences, optional personal context and extra notes | Browser `localStorage`, key `user_settings`. Context/notes can later enter answer requests. | Saved across reloads with no expiry. Clear the fields and save, or remove browser site data. Existing legacy `cvBackground` values can populate extra notes. No legacy-data deletion or migration is part of this preparation. | [Settings service](../../client/src/services/settings.ts), [settings fields](../../client/src/components/Settings.tsx) |
 | Azure quota fallback month | Browser `localStorage`, key `rtt_azure_quota_fallback_month`. | A different month makes the marker inactive. Code does not automatically delete the old value. | [Fallback memory](../../client/src/services/fallbackMemory.ts) |
 | Named candidate profile markdown, up to 200 KiB | Access-protected Worker → Cloudflare KV `PROFILES`. Selected content also enters Google answer prompts. | PUT overwrites the fixed profile key. No TTL or DELETE route exists. There is no per-customer account isolation. | [Profiles](../../worker/src/profiles.ts), [KV binding](../../wrangler.jsonc), [answer route](../../worker/src/answer.ts) |
@@ -41,6 +41,7 @@ The shared support-mail review uses AI-SDLC commit `b217812bca40c0b3d3ff1ba012ed
 - Clear Transcripts flushes pending final text to browser history, then clears the current transcript and answer display. It preserves saved history.
 - History session deletion rewrites browser storage. It does not delete the current displayed transcript or copies at providers.
 - Settings saves personal context and extra notes in the browser across reloads.
+- Future transcript history starts off without a positive choice. Turning it off stops writes and pending retries; it does not erase old history. Enabling it does not add final results already completed while off. A later final result may include audio already in progress because provider buffering does not expose a trustworthy start time.
 - The settings service has a reset method, but no reset UI caller was found. Do not promise a reset button.
 - Storage writes can fail, for example when the browser blocks storage or reaches its limit. The [helper](../../client/src/services/browserStorage.ts) reports failure. Transcript code retains unsaved entries for a later attempt.
 - KV profile and support-mail requests need operator handling. No customer deletion UI or measured request SLA exists in this implementation.
@@ -55,12 +56,12 @@ The independent [Python app](../../translator_app.py) saves three language choic
 
 The desktop app does not implement web localStorage history, Google answers or TypeSafe detection. A web policy draft must keep this scope clear.
 
-## Facts still needed for complete policies
+## Publication and live evidence checks
 
 1. Actual ICO registration evidence. Keep the number null while pending. A date alone never changes status.
-2. Current Google project tier and applicable Gemini API/Live terms, including improvement use, legal role, locations, retention and deletion. [DEPLOY.md](../../DEPLOY.md) currently warns that the free tier uses content to improve Google products. That statement is not a fresh check of the live billing account.
-3. Microsoft Speech/Translator resource and contract evidence for retention, deletion and transfers. Configured `uksouth` and the global Translator endpoint do not establish a complete processing location.
-4. TypeSafe service entity, terms, role, locations, retention, deletion and transfer arrangements.
+2. Actual Google project billing eligibility. [Current provider evidence](provider-evidence.md) records the published UK Paid Services requirement and data-use terms; these do not prove the live project setting.
+3. Microsoft resource configuration against the scoped public no-trace statements in [provider evidence](provider-evidence.md). Configured `uksouth` does not establish a complete location for every service and metadata item.
+4. Any custom TypeSafe arrangement that differs from its published US hosting, purpose-based retention and UK transfer terms. The earlier documentary gaps are resolved in [provider evidence](provider-evidence.md).
 5. Cloudflare Access, Workers, KV, rate-limit and log settings, locations and retention. Also establish R2 lifecycle and destination-mailbox retention without publishing its private address.
 6. Sentry provisioning, region, retention and synthetic receipt. Treat it as planned until the live evidence in [observability](../observability.md) exists.
 7. A supported UK GDPR lawful basis and linked-data status for each category. Microphone permission does not establish consent from every recorded person. Recording safeguards and audience claims need factual support.

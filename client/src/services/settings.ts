@@ -43,6 +43,7 @@ export class SettingsService {
       answerLanguage: 'same',
       userContext: '',
       extraNotes: '',
+      saveTranscriptHistory: false,
       profileId: '',
       questionThreshold: DEFAULT_QUESTION_THRESHOLD,
       ...applyTemplateDefaults(undefined),
@@ -80,6 +81,7 @@ export class SettingsService {
       userContext: typeof parsed.userContext === 'string' ? parsed.userContext : '',
       extraNotes: typeof parsed.extraNotes === 'string' ? parsed.extraNotes :
         typeof parsed.cvBackground === 'string' ? parsed.cvBackground : '',
+      saveTranscriptHistory: parsed.saveTranscriptHistory === true,
       profileId: choose(parsed.profileId, ['', 'james', 'wing'], defaults.profileId),
       sessionTemplateId,
       autoDetect: typeof parsed.autoDetect === 'boolean' ? parsed.autoDetect : true,
@@ -105,7 +107,12 @@ export class SettingsService {
       ...newSettings,
       hotkeys: { ...this.currentSettings.hotkeys, ...(newSettings.hotkeys ?? {}) },
     });
-    writeStoredJson(STORAGE_KEY, this.currentSettings);
+    const saved = writeStoredJson(STORAGE_KEY, this.currentSettings);
+    // Memory can already hold a failed prior choice. Every explicit retry must
+    // still report failure when the older durable value could not be replaced.
+    if (!saved && Object.prototype.hasOwnProperty.call(newSettings, 'saveTranscriptHistory')) {
+      throw new Error('History choice could not be saved. It applies until this page reloads. Clear this site’s browser data to remove an earlier choice.');
+    }
     return this.getSettings();
   }
 
