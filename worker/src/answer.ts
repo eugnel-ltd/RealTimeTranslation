@@ -117,6 +117,7 @@ export async function handleAnswer(
   env: WorkerEnv,
   fetchImpl: typeof fetch = fetch,
   loader: ProfileLoader = kvProfileLoader(env.PROFILES),
+  onStreamFailure?: (status: number) => void,
 ): Promise<Response> {
   if (!env.GEMINI_API_KEY) return errorJson('GEMINI_API_KEY is not configured', 503);
 
@@ -234,7 +235,7 @@ export async function handleAnswer(
     return errorJson('Gemini answer request failed', 502, { status: res.status });
   }
 
-  return sseResponse(relayGeminiStream(res.body, knownQuestion, extractQuestion, upstream, cleanup));
+  return sseResponse(relayGeminiStream(res.body, knownQuestion, extractQuestion, upstream, cleanup, onStreamFailure));
 }
 
 function sseResponse(body: ReadableStream<Uint8Array> | string): Response {
@@ -256,6 +257,7 @@ function relayGeminiStream(
   extractQuestion: boolean,
   upstream: AbortController,
   cleanup: () => void,
+  onFailure?: (status: number) => void,
 ): ReadableStream<Uint8Array> {
   const encoder = new TextEncoder();
   const decoder = new TextDecoder();
@@ -266,6 +268,7 @@ function relayGeminiStream(
   let usage: Record<string, number> = {};
   let completed = false;
   let failure = 'Gemini answer stream failed';
+  let failureStatus = 502;
   const reader = body.getReader();
   let cancelled = false;
   let downstreamCancelled = false;
@@ -317,6 +320,7 @@ function relayGeminiStream(
               continue;
             }
             if (parsed.error) {
+              if (parsed.error.status === 'RESOURCE_EXHAUSTED') failureStatus = 429;
               failure = parsed.error.status === 'RESOURCE_EXHAUSTED' ? 'Gemini free-tier quota reached' : 'Gemini answer stream failed';
               throw new Error(failure);
             }
@@ -382,6 +386,7 @@ function relayGeminiStream(
         controller.close();
       } catch {
         if (!cancelled) {
+          try { onFailure?.(failureStatus); } catch { /* reporting must not change the stream */ }
           send('error', { error: failure });
           controller.close();
         }

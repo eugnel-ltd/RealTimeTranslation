@@ -30,7 +30,20 @@ baseline:
   durable_data: done         # KV namespace PROFILES (candidate profiles)
   payments: missing
   legal: missing
-  observability: missing     # Workers logs and traces only; no error reporting
+  observability: missing     # instrumentation ready; live Sentry, monitor and usage evidence pending
   support: missing
   listing: missing
 waivers: {}
+
+# Destination metadata is not proof that the project, secret or monitor is live.
+sentry:
+  org: pgnetwork
+  project: rtt
+  scope: server
+
+# Partial processor facts for the planned integration; legal baseline stays missing.
+legal:
+  processors:
+    - name: Sentry (Functional Software Inc.)
+      purpose: Planned server diagnostics using fixed failure categories and route/status tags; enabled only with SENTRY_DSN
+      location: Project data region not yet confirmed; verify pgnetwork/rtt before activation

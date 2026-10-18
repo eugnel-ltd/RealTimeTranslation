@@ -8,6 +8,7 @@ import { errorJson, InvalidRequestError, json, log, logError } from './http';
 import { handleGetProfile, handleListProfiles, handlePutProfile } from './profiles';
 import { handleSpeechToken } from './speech-token';
 import { handleTranslate } from './translate';
+import { handleHealth, reportServerFailure } from './observability';
 
 const PAID_API_PATHS = new Set([
   '/api/speech-token',
@@ -19,24 +20,28 @@ const PAID_API_PATHS = new Set([
 ]);
 
 export default {
-  async fetch(request: Request, env: WorkerEnv): Promise<Response> {
+  async fetch(request: Request, env: WorkerEnv, ctx?: ExecutionContext): Promise<Response> {
     const url = new URL(request.url);
+    const finish = (response: Response) => {
+      reportServerFailure(env, ctx, url.pathname, response.status);
+      return response;
+    };
     try {
       if (isApiPath(url.pathname)) {
         const denied = await requireAccess(request, env);
         if (denied) return denied;
         const limited = await checkRateLimits(request, env, url.pathname);
-        if (limited) return limited;
-        return await routeApi(request, env, url);
+        if (limited) return finish(limited);
+        return finish(await routeApi(request, env, url, ctx));
       }
-      return env.ASSETS.fetch(request);
+      return finish(await env.ASSETS.fetch(request));
     } catch (err) {
       if (err instanceof InvalidRequestError) return errorJson(err.message, 400);
       logError({
         message: 'unhandled error',
         path: url.pathname,
       });
-      return errorJson('Internal server error', 500);
+      return finish(errorJson('Internal server error', 500));
     }
   },
 };
@@ -64,13 +69,16 @@ async function checkRateLimits(request: Request, env: WorkerEnv, pathname: strin
   return null;
 }
 
-async function routeApi(request: Request, env: WorkerEnv, url: URL): Promise<Response> {
+async function routeApi(request: Request, env: WorkerEnv, url: URL, ctx?: ExecutionContext): Promise<Response> {
   const { pathname } = url;
   const method = request.method.toUpperCase();
   log({ message: 'api', method, path: pathname });
 
   if (pathname === '/api/health' && method === 'GET') {
     return json({ ok: true });
+  }
+  if (pathname === '/api/healthz' && method === 'GET') {
+    return handleHealth(env);
   }
   if (pathname === '/api/config' && method === 'GET') {
     return json({
@@ -95,7 +103,7 @@ async function routeApi(request: Request, env: WorkerEnv, url: URL): Promise<Res
     return handleDetectQuestion(request, env);
   }
   if (pathname === '/api/answer' && method === 'POST') {
-    return handleAnswer(request, env);
+    return handleAnswer(request, env, fetch, undefined, (status) => reportServerFailure(env, ctx, pathname, status, 'stream'));
   }
   if (pathname === '/api/profiles' && method === 'GET') {
     return handleListProfiles(env);

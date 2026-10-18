@@ -1,6 +1,8 @@
 import type { RateLimit } from '@cloudflare/workers-types';
 
 export interface WorkerEnv {
+  SENTRY_DSN?: string;
+  DEPLOYMENT_SHA?: string;
   AZURE_SPEECH_KEY?: string;
   AZURE_SPEECH_REGION: string;
   AZURE_TRANSLATOR_KEY?: string;

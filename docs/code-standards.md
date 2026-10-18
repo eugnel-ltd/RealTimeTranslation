@@ -16,6 +16,7 @@ The format-lint hook runs Format, then Lint, after each edit; `{file}` in either
 - Deploy (production): `npm run build && npx wrangler deploy` (`DEPLOY.md`). Dry run first: `npm run deploy:dry`. Healthy: wrangler prints the deployed version id.
 - Rollback: `npx wrangler rollback --name rtt`. Last rehearsed: never.
 - Health check: `curl -sS --max-time 20 -o /dev/null -w '%{http_code}' https://rtt.eugnel.com/api/health`. Healthy: `302` or `403` (Cloudflare Access stops callers without a session), never `5xx`; with an Access session, `{"ok":true}`.
+- Authenticated monitoring: `node scripts/uptime.mjs`. Healthy: exit 0 for the fixed RTT homepage and shared `/api/healthz`, using trusted-runner Access credentials; exit 2 is unconfigured, not a pass. Live setup/evidence remains pending (`docs/observability.md`).
 
 ## Enforcement in this repo
 

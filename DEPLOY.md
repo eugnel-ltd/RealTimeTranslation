@@ -221,3 +221,11 @@ Presets live in `shared/sessionTemplates.ts` (add an entry there to ship a new t
 | `meeting` | Not an interview: summary, suggested reply, action items. Auto-detect off by default |
 
 **Auto-detect** is a visible On/Off switch on the AI Answer panel (hotkey `D`) and can change mid-session. Type a question in the panel (Enter submits, Shift+Enter newline, hotkey `Q` focuses). One-way AI video makes that box prominent because questions are often on-screen text.
+
+## Prepared server monitoring
+
+See [docs/observability.md](docs/observability.md) for the exact private event allow-list and pending live evidence. Optional Worker secret `SENTRY_DSN` enables server-only reporting; an unset/malformed value leaves it off. Optional non-secret `DEPLOYMENT_SHA` identifies the reviewed release commit in reports. No provider or monitoring secret belongs in a `VITE_*` value.
+
+`/api/healthz` is the shared health response behind the existing Access check and request budget; `/api/health` retains its original response. The monitor uses `RTT_UPTIME_ACCESS_CLIENT_ID` and `RTT_UPTIME_ACCESS_CLIENT_SECRET` in the trusted runner's secret store, without an Access exemption. `node scripts/uptime.mjs` exits 0 for healthy, 1 for unhealthy and 2 for unconfigured.
+
+Source integration does not prove that Sentry, its Worker secret, Access service authentication or the schedule is active. Keep the observability baseline missing until the documented synthetic receipt, authenticated monitor run and operational request metric checks pass.
