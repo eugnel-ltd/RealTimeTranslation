@@ -4,7 +4,7 @@
 - Base: main `470ed87e6a036387391f6fce60caaec582e97a42`.
 - Spec: none; this is a bounded correction of readiness records, not new functionality.
 - Task type and level: baseline/config at level 2. Stop: nothing for this completed artifact slice; deployment and unfinished operational acceptance remain separate.
-- Acceptance: root and the independent identity reviewer read this committed plan before any readiness/status edit.
+- Acceptance: root and the independent identity reviewer read and accepted committed plan `d08e1616a9122f7fb88cc4354868ca61c16d53db` before any readiness/status edit.
 
 ## Problem and outcome
 
@@ -40,4 +40,7 @@ No application, renderer, shared template, legal policy content, consent control
 
 ## Results
 
-Pending plan acceptance and execution. No readiness status has been changed.
+- Exact current base `470ed87e6a036387391f6fce60caaec582e97a42` built successfully. Real local Chromium 154.0.8037.57 passed nine consent/content checks and all four actual policy routes on 18 October 2026 at 11:07 UTC, with zero refused or unexpected requests. The original scratch checker is preserved; the new scratch copy adds only the explicit read-only account-bootstrap fixture, loopback port and evidence-output paths.
+- History default-off, positive choice/reload, repeated failed withdrawal, successful retry/reload and preservation of existing history/notes passed. Policy contacts, pending ICO state, free-service claims, script-free output and navigation passed. Exact route hashes are in the legal README.
+- The installed, reviewed `eugnel-platform` pin `ed18319bfccfe250d25b415caa997efca816db11` rendered the actual manifest-backed privacy answers successfully. SHA-256: `2ba45d4ad6b22c330c89b7a54a33323554d3d289b484d4251bc178562f7d01ff`. All eleven data categories, current/conditional scope, no-tracking entries and deletion contact were inspected. Generic sheets remain scratch output, not published assets or submitted store forms.
+- The status/docs change leaves current free/private processing, conditional account facts, policy source, canonical company snapshot, renderer, application and frozen tests unchanged. Protected remote delivery, provider project eligibility and account activation acceptance remain explicitly separate. Final exact-head build/output comparison, checks and independent verdict belong to this change's PR evidence.

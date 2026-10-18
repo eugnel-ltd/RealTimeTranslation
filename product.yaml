@@ -29,7 +29,7 @@ baseline:
   accounts: missing          # implementation is default-off; customer activation/live acceptance pending
   durable_data: done         # KV namespace PROFILES (candidate profiles)
   payments: missing
-  legal: missing
+  legal: done               # current policies, privacy answers and actual consent controls verified locally
   observability: missing     # instrumentation ready; live Sentry, monitor and usage evidence pending
   support: missing
   listing: missing
