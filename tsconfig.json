@@ -1,13 +1,23 @@
 {
   "compilerOptions": {
     "target": "ES2022",
-    "lib": ["ES2022"],
+    "lib": [
+      "ES2022"
+    ],
     "module": "ESNext",
     "moduleResolution": "bundler",
     "strict": true,
     "skipLibCheck": true,
     "noEmit": true,
-    "types": ["@cloudflare/workers-types", "node"]
+    "types": [
+      "@cloudflare/workers-types",
+      "node"
+    ],
+    "resolveJsonModule": true
   },
-  "include": ["worker/src/**/*.ts", "shared/**/*.ts", "worker-configuration.d.ts"]
+  "include": [
+    "worker/src/**/*.ts",
+    "shared/**/*.ts",
+    "worker-configuration.d.ts"
+  ]
 }

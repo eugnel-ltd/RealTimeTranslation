@@ -25,9 +25,13 @@
     "vite": "^6.4.4"
   },
   "dependencies": {
-    "jose": "^6.1.0"
+    "jose": "^6.1.0",
+    "eugnel-platform": "github:eugnel-ltd/eugnel-platform#d50993325b0d094ea8b79d30dc75696ea387ec28"
   },
   "engines": {
     "node": "^22.0.0 || >=24.0.0"
+  },
+  "overrides": {
+    "yaml": "2.8.3"
   }
 }
