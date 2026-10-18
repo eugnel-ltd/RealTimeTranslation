@@ -16,7 +16,7 @@ All existing control quarantine remains: no personal runtime before our response
 
 Add one new typed regression file. Execute the actual AccountBrowser and real immutable storage implementation with synthetic localStorage and deferred same-origin fetch responses. Capture semantic old-source failures for focus/storage-hint during pending delete, then matching-job completion removing exactly A's three known keys. Preserve controls for unfinished deletion, account/scope change, wrong-job completion, malformed or failed initiating response, unavailable verification and reload without a candidate. Existing stale A-to-B/control barrier and all prior frozen tests remain unchanged.
 
-Run typecheck, lint, trusted candidate-tree secret scan and the test harness before freezing the new file; inspect assertion failures rather than accepting a nonzero import/harness error. Commit the first-red tests before the narrow source correction. Use one bounded vendor test handoff (at most30seconds), then direct fallback if it exits1 without changes.
+Run typecheck, lint, trusted candidate-tree secret scan and the test harness before freezing the new file; inspect assertion failures rather than accepting a nonzero import/harness error. Commit the first-red tests before the narrow source correction. Root explicitly authorised reuse of the preceding bounded failed vendor lane under unchanged missing runtime readiness: the shared usage ledger records the30second test handoff timeout at09:32:41UTC, followed by the skipped unconfigured fallback. No fresh successful vendor run is claimed; direct implementation/test fallback continues without another readiness loop.
 
 ## Final acceptance
 
