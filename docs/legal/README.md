@@ -1,4 +1,4 @@
-# RTT legal preparation
+# RTT legal delivery and evidence
 
 The application now links generated [privacy](/legal/privacy/), [terms](/legal/terms/), [free-service](/legal/refunds/) and [data-use](/legal/data-use/) pages. The build creates them from reviewed product facts and shared templates. The [inventory](data-inventory.md) and [provider evidence](provider-evidence.md) record their scope for [#9](https://github.com/eugnel-ltd/RealTimeTranslation/issues/9). Source integration is separate from live delivery proof; the baseline stays missing until acceptance is verified.
 
@@ -18,7 +18,7 @@ Serve the built assets and check `/legal/privacy/`, `/legal/terms/`, `/legal/ref
 
 1. Read current `product.yaml`, the inventory and canonical `eugnel-hq/company/company.yaml`.
 2. Record the commit of all three repositories. Check that each checkout contains the intended reviewed revision.
-3. Check that shared templates match the actual product. RTT has no checkout, customer account or account-delete route.
+3. Check that shared templates match the actual product. RTT has no checkout. Account controls are implemented but disabled in the current private service; keep capability notices conditional and verify the actual mode before publishing.
 4. Use the shared checkout's installed, locked dependencies. If dependencies are missing, follow its package setup instructions.
 5. Set paths to the reviewed checkouts. Create a fresh scratch directory outside assets for publication.
 
@@ -74,6 +74,12 @@ The bounded [shared-template correction](https://github.com/eugnel-ltd/eugnel-pl
 
 Use the canonical privacy contact for data requests. [The inventory](data-inventory.md#existing-controls-and-limits) describes browser controls and their limits. Record whether a request concerns browser history, profile KV, support R2, the forward mailbox or a provider copy.
 
-For server-held data, record the authorised operator action, affected stores and observed result through the existing support process. Include relevant indexes and provider copies in the assessment. Do not claim an account-delete endpoint, automatic expiry or complete erasure where none exists.
+For server-held data, record the authorised operator action, affected stores and observed result through the existing support process. In customer mode distinguish the verified account's coordinated erasure from owner KV, support records, provider copies and backups. Pending retries are not completed erasure. Include relevant indexes and provider copies in the assessment. Do not promise automatic expiry or complete erasure where none exists.
 
 A future retention schedule needs matching code or operational controls. A policy sentence alone does not add expiry to browser history, profiles or support records. Keep private content, credentials and the forward destination out of public evidence.
+
+## Account notice acceptance
+
+The [account inventory](data-inventory.md#conditional-account-processing) cites the audited shared source and RTT consumer. Rendered-page regressions cover conditional availability, provider notices, credential validity versus physical cleanup, retryable deletion and limited browser cache removal. Preserve the existing history opt-in, buffered-audio disclosure and all seven original legal/history test files.
+
+Before activation, use a separate protected preview and the reviewed release process to check the four real routes, pre-sign-in policy links, actual Access/Apple callback behavior, provider setup, database migrations and two-account/device signup/signin/link/signout/delete/retry. Confirm sender previews, database jurisdiction/backup plan and bounded maintenance receipts. Record exact source, deployment/version and nonsecret results. No external resources or production flags are changed by this policy slice; the legal and accounts baselines remain missing until actual acceptance.
