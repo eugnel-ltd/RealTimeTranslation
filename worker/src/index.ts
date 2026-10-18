@@ -9,6 +9,10 @@ import { handleGetProfile, handleListProfiles, handlePutProfile } from './profil
 import { handleSpeechToken } from './speech-token';
 import { handleTranslate } from './translate';
 import { handleHealth, reportServerFailure } from './observability';
+import { AccountRequestError } from './accountErrors';
+import { ACCOUNT_ERASER_PATH, handleAccountErasure, resolveAccountContext, type AccountContext } from './accounts';
+import { handleAccountGetProfile, handleAccountListProfiles, handleAccountPutProfile } from './accountProfiles';
+import { handleAccountAuth, isAccountAuthPath } from './accountAuth';
 
 const PAID_API_PATHS = new Set([
   '/api/speech-token',
@@ -27,15 +31,24 @@ export default {
       return response;
     };
     try {
+      if (url.pathname === ACCOUNT_ERASER_PATH) return finish(await handleAccountErasure(request, env));
       if (isApiPath(url.pathname)) {
         const denied = await requireAccess(request, env);
         if (denied) return denied;
         const limited = await checkRateLimits(request, env, url.pathname);
         if (limited) return finish(limited);
-        return finish(await routeApi(request, env, url, ctx));
+        if (isAccountAuthPath(url.pathname)) return finish(await handleAccountAuth(request, env));
+        const guarded = PAID_API_PATHS.has(url.pathname) || url.pathname === '/api/profiles' || url.pathname.startsWith('/api/profiles/');
+        const account = guarded ? await resolveAccountContext(request, env) : undefined;
+        return finish(await routeApi(request, env, url, ctx, account));
       }
       return finish(await env.ASSETS.fetch(request));
     } catch (err) {
+      if (err instanceof AccountRequestError) {
+        const response = errorJson(err.message, err.status);
+        response.headers.set('Cache-Control', 'no-store');
+        return finish(response);
+      }
       if (err instanceof InvalidRequestError) return errorJson(err.message, 400);
       logError({
         message: 'unhandled error',
@@ -69,7 +82,7 @@ async function checkRateLimits(request: Request, env: WorkerEnv, pathname: strin
   return null;
 }
 
-async function routeApi(request: Request, env: WorkerEnv, url: URL, ctx?: ExecutionContext): Promise<Response> {
+async function routeApi(request: Request, env: WorkerEnv, url: URL, ctx?: ExecutionContext, account?: AccountContext): Promise<Response> {
   const { pathname } = url;
   const method = request.method.toUpperCase();
   log({ message: 'api', method, path: pathname });
@@ -108,9 +121,12 @@ async function routeApi(request: Request, env: WorkerEnv, url: URL, ctx?: Execut
     return handleDetectQuestion(request, env);
   }
   if (pathname === '/api/answer' && method === 'POST') {
-    return handleAnswer(request, env, fetch, undefined, (status) => reportServerFailure(env, ctx, pathname, status, 'stream'));
+    const response = await handleAnswer(request, env, fetch, account?.mode === 'customer' ? account.profiles.loader : undefined, (status) => reportServerFailure(env, ctx, pathname, status, 'stream'));
+    if (account?.mode === 'customer') response.headers.set('Cache-Control', 'no-store');
+    return response;
   }
   if (pathname === '/api/profiles' && method === 'GET') {
+    if (account?.mode === 'customer') return handleAccountListProfiles(account.profiles);
     return handleListProfiles(env);
   }
   const profileMatch = pathname.match(/^\/api\/profiles\/([^/]+)$/);
@@ -120,6 +136,10 @@ async function routeApi(request: Request, env: WorkerEnv, url: URL, ctx?: Execut
       id = decodeURIComponent(profileMatch[1] ?? '');
     } catch {
       throw new InvalidRequestError('Invalid profile id encoding');
+    }
+    if (account?.mode === 'customer') {
+      if (method === 'GET') return handleAccountGetProfile(account.profiles, id);
+      if (method === 'PUT') return handleAccountPutProfile(request, account.profiles, id);
     }
     if (method === 'GET') return handleGetProfile(env, id);
     if (method === 'PUT') return handlePutProfile(request, env, id);

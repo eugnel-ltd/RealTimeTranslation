@@ -28,6 +28,7 @@ import { applyTemplateDefaults, getSessionTemplate } from '../../shared/sessionT
 import { QaItem, TranscriptEntry, SessionTemplateId, UserSettings } from './types';
 import { ThemeProvider } from './contexts/ThemeContext';
 import { SettingsService } from './services/settings';
+import type { AppRuntime } from './services/accountLifetime';
 import { createTranscriptId, persistTranscriptEntries } from './services/transcriptHistory';
 import { SpeechController } from './services/speechController';
 import { detectQuestion, fetchPublicConfig, streamAnswer } from './services/api';
@@ -51,8 +52,8 @@ type RecordingOperation = {
   used: boolean;
 };
 
-const App: React.FC = () => {
-  const settingsService = SettingsService.getInstance();
+const App: React.FC<{ runtime?: AppRuntime; accountControls?: React.ReactNode }> = ({ runtime, accountControls }) => {
+  const settingsService = useMemo(() => runtime ? SettingsService.forStorage(runtime.storage) : SettingsService.getInstance(), [runtime]);
   const [settings, setSettings] = useState<UserSettings>(() => settingsService.getSettings());
   const [isRecording, setIsRecording] = useState(false);
   const [transcripts, setTranscripts] = useState<TranscriptEntry[]>([]);
@@ -95,14 +96,15 @@ const App: React.FC = () => {
   const answerGenerationRef = useRef(0);
 
   const detector: QuestionDetector = useMemo(
-    () => createDebouncedDetector(new HttpQuestionDetector(), 400),
-    [],
+    () => createDebouncedDetector(new HttpQuestionDetector(runtime), 400),
+    [runtime],
   );
 
   const saveTranscriptsToHistory = useCallback(() => {
+    if (runtime && !runtime.active) return;
     if (!historyEnabledRef.current) return;
     if (pendingTranscriptsRef.current.size === 0) return;
-    const savedIds = new Set(persistTranscriptEntries([...pendingTranscriptsRef.current.values()]));
+    const savedIds = new Set(persistTranscriptEntries([...pendingTranscriptsRef.current.values()], runtime?.storage));
     if (savedIds.size === 0) return;
     for (const id of savedIds) pendingTranscriptsRef.current.delete(id);
     const updated = transcriptsRef.current.map((entry) =>
@@ -110,7 +112,7 @@ const App: React.FC = () => {
     );
     transcriptsRef.current = updated;
     setTranscripts(updated);
-  }, []);
+  }, [runtime]);
 
   useEffect(() => {
     saveTranscriptsToHistory();
@@ -134,7 +136,7 @@ const App: React.FC = () => {
       await operation.controller?.stop();
       saveTranscriptsToHistory();
     } catch {
-      if (generation === recordingGenerationRef.current) setError('Failed to stop recording.');
+      if (generation === recordingGenerationRef.current && (!runtime || runtime.active)) setError('Failed to stop recording.');
     }
   }, [saveTranscriptsToHistory]);
 
@@ -148,7 +150,7 @@ const App: React.FC = () => {
       used: false,
     };
     // Every controller belongs to one session and one immutable set of speech settings.
-    const isCurrent = () => operation.active &&
+    const isCurrent = () => (!runtime || runtime.active) && operation.active &&
       recordingRef.current === operation &&
       recordingGenerationRef.current === operation.generation;
     const receiveTranscript = (
@@ -197,9 +199,9 @@ const App: React.FC = () => {
       onNotice: (message) => {
         if (isCurrent()) setError(message);
       },
-    });
+    }, runtime);
     return operation;
-  }, [settings.inputLanguage, settings.outputLanguage, settings.secondOutputLanguage, stopRecording]);
+  }, [settings.inputLanguage, settings.outputLanguage, settings.secondOutputLanguage, stopRecording, runtime]);
 
   useEffect(() => {
     recordingRef.current = createRecordingOperation();
@@ -216,8 +218,9 @@ const App: React.FC = () => {
   }, [createRecordingOperation, settings.speechEngine]);
 
   useEffect(() => {
-    void fetchPublicConfig()
+    void fetchPublicConfig(runtime)
       .then((cfg) => {
+        if (runtime && !runtime.active) return;
         if (cfg.defaultAnswerModel === 'gemini-3.8-flash' || cfg.defaultAnswerModel === 'gemini-3.5-flash-lite') {
           setSettings((prev) => {
             if (prev.answerModel) return prev;
@@ -228,7 +231,7 @@ const App: React.FC = () => {
         }
       })
       .catch(() => undefined);
-  }, [settingsService]);
+  }, [settingsService, runtime]);
 
   const sessionFinals = useCallback((): WindowSegment[] => {
     return transcriptsRef.current
@@ -272,12 +275,13 @@ const App: React.FC = () => {
   }, [windowedSegments]);
 
   const patchSettings = useCallback((partial: Partial<UserSettings>) => {
+    if (runtime && !runtime.active) return;
     setSettings((prev) => {
       const next = { ...prev, ...partial };
       settingsService.updateSettings(partial);
       return next;
     });
-  }, [settingsService]);
+  }, [settingsService, runtime]);
 
   const runAnswer = useCallback(
     async (opts: {
@@ -290,6 +294,7 @@ const App: React.FC = () => {
       startId?: number | null;
       endId?: number | null;
     }) => {
+      if (runtime && !runtime.active) return;
       if (!aiAnswerPanelRef.current) return;
       if (answeringRef.current && !opts.replace) return;
       const generation = answerGenerationRef.current;
@@ -324,7 +329,7 @@ const App: React.FC = () => {
             windowSeconds: template.manualExtractWindowSeconds,
             lastAnsweredQuestion: lastAnsweredRef.current,
             threshold: settings.questionThreshold,
-          });
+          }, runtime);
           if (generation !== answerGenerationRef.current) return;
           segs = sliceFromQuestionStart(segs, start.segmentIndex);
           setDetectorNote(
@@ -393,6 +398,7 @@ const App: React.FC = () => {
             }
           },
           abort.signal,
+          runtime,
         );
         if (abort.signal.aborted || generation !== answerGenerationRef.current || !aiAnswerPanelRef.current) return;
         if (!completed || failed) return;
@@ -438,6 +444,7 @@ const App: React.FC = () => {
       settings.sessionTemplateId,
       settings.questionThreshold,
       settings.questionTimerSeconds,
+      runtime,
     ],
   );
 
@@ -467,6 +474,43 @@ const App: React.FC = () => {
     answeringRef.current = false;
     abort?.abort();
   }, [detector, clearSilenceTimer]);
+
+  useEffect(() => runtime?.onRevoke(() => {
+    historyEnabledRef.current = false;
+    ++historyConsentGenerationRef.current;
+    pendingTranscriptsRef.current.clear();
+    ++recordingGenerationRef.current;
+    const operation = recordingRef.current;
+    recordingRef.current = null;
+    if (operation) {
+      operation.active = false;
+      void operation.controller?.stop().catch(() => undefined);
+    }
+    ++answerGenerationRef.current;
+    aiAnswerPanelRef.current = false;
+    detector.cancel?.();
+    clearSilenceTimer();
+    const answer = answerAbortRef.current;
+    answerAbortRef.current = null;
+    answer?.abort();
+    answeringRef.current = false;
+    pendingAutoRef.current = { hint: '', newestId: null };
+    lastAnsweredRef.current = null;
+    lastHintRef.current = null;
+    lastConversationRef.current = null;
+    transcriptsRef.current = [];
+    setIsRecording(false);
+    setTranscripts([]);
+    setQaHistory([]);
+    setCurrentQuestion('');
+    setCurrentAnswer('');
+    setManualDraft('');
+    setSettings((previous) => ({ ...previous, userContext: '', extraNotes: '', profileId: '' }));
+    setDetectorNote(undefined);
+    setStreaming(false);
+    setIsSettingsOpen(false);
+    setHelpOpen(false);
+  }), [runtime, detector, clearSilenceTimer]);
 
   const fireAutoAnswer = useCallback(
     (hintFromHit: string, replace = false) => {
@@ -510,7 +554,7 @@ const App: React.FC = () => {
             windowSeconds: settings.answerWindowSeconds,
             lastAnsweredQuestion: lastAnsweredRef.current,
             threshold: settings.questionThreshold,
-          });
+          }, runtime);
           if (start.segmentIndex != null && Number.isFinite(start.segmentIndex)) bStart = start.segmentIndex;
         } catch {
           bStart = null;
@@ -551,7 +595,7 @@ const App: React.FC = () => {
         });
       })();
     },
-    [clearSilenceTimer, runAnswer, windowedSegments, extractionSegments, sessionFinals, settings.answerWindowSeconds, settings.questionThreshold],
+    [clearSilenceTimer, runAnswer, windowedSegments, extractionSegments, sessionFinals, settings.answerWindowSeconds, settings.questionThreshold, runtime],
   );
 
   useEffect(() => {
@@ -675,6 +719,7 @@ const App: React.FC = () => {
   ]);
 
   const handleToggleRecording = async () => {
+    if (runtime && !runtime.active) return;
     if (recordingRef.current?.active) {
       await stopRecording();
       return;
@@ -708,6 +753,7 @@ const App: React.FC = () => {
   };
 
   const handleClearTranscripts = () => {
+    if (runtime && !runtime.active) return;
     saveTranscriptsToHistory();
     ++answerGenerationRef.current;
     detector.cancel?.();
@@ -736,6 +782,7 @@ const App: React.FC = () => {
   };
 
   const handleSettingsUpdate = (next: UserSettings) => {
+    if (runtime && !runtime.active) return;
     if (historyEnabledRef.current !== (next.saveTranscriptHistory === true)) historyConsentGenerationRef.current++;
     historyEnabledRef.current = next.saveTranscriptHistory === true;
     if (!historyEnabledRef.current) pendingTranscriptsRef.current.clear();
@@ -750,12 +797,14 @@ const App: React.FC = () => {
   };
 
   const copyLatest = async () => {
+    if (runtime && !runtime.active) return;
     const text = currentAnswer || qaHistory[0]?.answer || '';
     if (!text) return;
     await navigator.clipboard.writeText(text);
   };
 
   const cycleLayout = () => {
+    if (runtime && !runtime.active) return;
     const idx = LAYOUT_CYCLE.indexOf(settings.splitLayout);
     const next = LAYOUT_CYCLE[(idx + 1) % LAYOUT_CYCLE.length];
     const updated = { ...settings, splitLayout: next };
@@ -813,7 +862,7 @@ const App: React.FC = () => {
   });
 
   return (
-    <ThemeProvider>
+    <ThemeProvider settingsService={settingsService} runtime={runtime}>
       <div className="min-h-screen bg-gray-100 dark:bg-gray-900 transition-colors duration-300">
         <Header
           isRecording={isRecording}
@@ -829,6 +878,7 @@ const App: React.FC = () => {
         />
 
         <main className="container mx-auto px-4 py-8">
+          {accountControls}
           {error && (
             <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative mb-4">
               {error}
@@ -875,7 +925,7 @@ const App: React.FC = () => {
               ) : null}
             </div>
           ) : (
-            <History />
+            <History storage={runtime?.storage} />
           )}
         </main>
 
@@ -892,6 +942,7 @@ const App: React.FC = () => {
             onClose={() => setIsSettingsOpen(false)}
             initialSettings={settings}
             onUpdate={handleSettingsUpdate}
+            runtime={runtime}
           />
         )}
         <ShortcutHelp open={helpOpen} hotkeys={settings.hotkeys} onClose={() => setHelpOpen(false)} />

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { ChevronDownIcon, ChevronUpIcon, TrashIcon } from '@heroicons/react/24/solid';
 import { RecordingSession } from '../types';
 import { deleteTranscriptSession, loadTranscriptHistory } from '../services/transcriptHistory';
+import type { StorageScope } from '../services/browserStorage';
 
 interface ConfirmDialogProps {
   isOpen: boolean;
@@ -41,7 +42,7 @@ const ConfirmDialog: React.FC<ConfirmDialogProps> = ({ isOpen, onConfirm, onCanc
   );
 };
 
-const History: React.FC = () => {
+const History: React.FC<{ storage?: StorageScope }> = ({ storage }) => {
   const [sessions, setSessions] = useState<RecordingSession[]>([]);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<{
@@ -56,10 +57,10 @@ const History: React.FC = () => {
 
   useEffect(() => {
     loadHistory();
-  }, []);
+  }, [storage]);
 
   const loadHistory = () => {
-    const history = loadTranscriptHistory();
+    const history = loadTranscriptHistory(storage);
     history.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
     setSessions(history);
   };
@@ -82,7 +83,8 @@ const History: React.FC = () => {
   };
 
   const handleDeleteConfirm = () => {
-    const history = deleteTranscriptSession(deleteConfirm.sessionId);
+    if (storage && !storage.active) return;
+    const history = deleteTranscriptSession(deleteConfirm.sessionId, storage);
     if (history) {
       history.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
       setSessions(history);

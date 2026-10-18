@@ -56,6 +56,8 @@ try {
       if (url.origin !== base.origin || request.method() !== 'GET') {
         refused.push('nonlocal or mutating request');
         await route.abort();
+      } else if (url.pathname === '/api/account') {
+        await route.fulfill({ json: { enabled: false } });
       } else if (url.pathname === '/api/config') {
         await route.fulfill({ json: { defaultAnswerModel: 'gemini-3.8-flash', models: ['gemini-3.8-flash', 'gemini-3.5-flash-lite'] } });
       } else if (url.pathname === '/api/profiles') {

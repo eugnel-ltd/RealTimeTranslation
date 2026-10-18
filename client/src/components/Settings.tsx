@@ -17,12 +17,14 @@ import type {
   UserSettings,
 } from '../types';
 import SessionTemplateSelect from './SessionTemplateSelect';
+import { assertRuntime, type AppRuntime } from '../services/accountLifetime';
 
 interface SettingsProps {
   isOpen: boolean;
   onClose: () => void;
   initialSettings: UserSettings;
   onUpdate: (settings: UserSettings) => void;
+  runtime?: AppRuntime;
 }
 
 const getLanguageDisplayName = (lang: (typeof config.languages)[number]): string => {
@@ -35,7 +37,7 @@ const SEED_PROFILES: ProfileSummary[] = [
   { id: 'wing', name: 'Wing' },
 ];
 
-const Settings: React.FC<SettingsProps> = ({ isOpen, onClose, initialSettings, onUpdate }) => {
+const Settings: React.FC<SettingsProps> = ({ isOpen, onClose, initialSettings, onUpdate, runtime }) => {
   const [draft, setDraft] = useState<UserSettings>(initialSettings);
   const [capturing, setCapturing] = useState<HotkeyAction | null>(null);
   const [profiles, setProfiles] = useState<ProfileSummary[]>(SEED_PROFILES);
@@ -47,15 +49,23 @@ const Settings: React.FC<SettingsProps> = ({ isOpen, onClose, initialSettings, o
   const fileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
+    if (runtime && !runtime.active) return;
     setDraft(initialSettings);
-  }, [initialSettings]);
+  }, [initialSettings, runtime]);
+
+  useEffect(() => runtime?.onRevoke(() => {
+    setEditorName(''); setEditorMarkdown(''); setProfileNote(''); setSaveError('');
+    setDraft((previous) => ({ ...previous, userContext: '', extraNotes: '' }));
+  }), [runtime]);
 
   useEffect(() => {
     if (!isOpen) return;
-    void listProfiles()
-      .then((data) => setProfiles(data.profiles.length ? data.profiles : SEED_PROFILES))
-      .catch(() => setProfiles(SEED_PROFILES));
-  }, [isOpen]);
+    let cancelled = false;
+    void listProfiles(runtime)
+      .then((data) => { if (!cancelled && (!runtime || runtime.active)) setProfiles(data.profiles.length ? data.profiles : SEED_PROFILES); })
+      .catch(() => { if (!cancelled && (!runtime || runtime.active)) setProfiles(SEED_PROFILES); });
+    return () => { cancelled = true; };
+  }, [isOpen, runtime]);
 
   useEffect(() => {
     if (!isOpen || !draft.profileId) {
@@ -66,47 +76,53 @@ const Settings: React.FC<SettingsProps> = ({ isOpen, onClose, initialSettings, o
     }
     let cancelled = false;
     const id = draft.profileId;
-    void getProfile(id)
+    void getProfile(id, runtime)
       .then((p) => {
-        if (cancelled) return;
+        if (cancelled || (runtime && !runtime.active)) return;
         setEditorName(p.name);
         setEditorMarkdown(p.markdown);
         setEditorDirty(false);
         setProfileNote('');
       })
       .catch((err) => {
-        if (!cancelled) setProfileNote(err instanceof Error ? err.message : 'Failed to load profile');
+        if (!cancelled && (!runtime || runtime.active)) setProfileNote(err instanceof Error ? err.message : 'Failed to load profile');
       });
     return () => {
       cancelled = true;
     };
-  }, [isOpen, draft.profileId]);
+  }, [isOpen, draft.profileId, runtime]);
 
   const saveProfile = async () => {
+    assertRuntime(runtime);
     if (!draft.profileId) return;
-    const saved = await putProfile(draft.profileId, { name: editorName, markdown: editorMarkdown });
+    const saved = await putProfile(draft.profileId, { name: editorName, markdown: editorMarkdown }, runtime);
+    assertRuntime(runtime);
     setEditorDirty(false);
     setProfileNote(`Saved ${saved.bytes} bytes to ${saved.name}`);
     setProfiles((prev) => prev.map((p) => (p.id === saved.id ? { id: saved.id, name: saved.name } : p)));
   };
 
   const handleSave = async () => {
+    if (runtime && !runtime.active) return;
     setSaveError('');
     try {
       if (draft.profileId && editorDirty) await saveProfile();
+      assertRuntime(runtime);
       onUpdate(draft);
       onClose();
     } catch (err) {
-      setSaveError(err instanceof Error ? err.message : 'Failed to save settings');
+      if (!runtime || runtime.active) setSaveError(err instanceof Error ? err.message : 'Failed to save settings');
     }
   };
 
   const onUpload = async (file: File) => {
+    if (runtime && !runtime.active) return;
     if (!/\.(md|txt)$/i.test(file.name)) {
       setProfileNote('Upload a .md or .txt file');
       return;
     }
     const text = await file.text();
+    if (runtime && !runtime.active) return;
     if (new TextEncoder().encode(text).length > 200 * 1024) {
       setProfileNote('File exceeds 200KB');
       return;
@@ -431,7 +447,7 @@ const Settings: React.FC<SettingsProps> = ({ isOpen, onClose, initialSettings, o
                       </button>
                       <button
                         type="button"
-                        onClick={() => void saveProfile().catch((err) => setProfileNote(err instanceof Error ? err.message : 'Save failed'))}
+                        onClick={() => void saveProfile().catch((err) => { if (!runtime || runtime.active) setProfileNote(err instanceof Error ? err.message : 'Save failed'); })}
                         className="px-3 py-1 text-sm rounded-md bg-indigo-600 text-white"
                       >
                         Save profile
