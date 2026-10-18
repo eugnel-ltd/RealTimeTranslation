@@ -25,11 +25,12 @@ export function fetchSpeechToken(): Promise<SpeechToken> {
   return apiJson<SpeechToken>('/api/speech-token');
 }
 
-export function translateText(text: string, to: string[], from?: string): Promise<{ translations: string[]; provider: string }> {
+export function translateText(text: string, to: string[], from?: string, signal?: AbortSignal): Promise<{ translations: string[]; provider: string }> {
   return apiJson('/api/translate', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ text, to, from }),
+    signal,
   });
 }
 
@@ -108,30 +109,38 @@ export async function streamAnswer(
   }
   const reader = res.body.getReader();
   const decoder = new TextDecoder();
+  const cancel = () => { void reader.cancel().catch(() => undefined); };
+  signal?.addEventListener('abort', cancel, { once: true });
+  if (signal?.aborted) cancel();
   let buf = '';
-  while (true) {
-    if (signal?.aborted) {
-      await reader.cancel();
-      return;
-    }
-    const { done, value } = await reader.read();
-    if (done) break;
-    buf += decoder.decode(value, { stream: true });
-    const parts = buf.split('\n\n');
-    buf = parts.pop() ?? '';
-    for (const part of parts) {
-      const event = part.split('\n').find((l) => l.startsWith('event: '))?.slice(7).trim();
-      const dataLine = part.split('\n').find((l) => l.startsWith('data: '));
-      if (!event || !dataLine) continue;
-      let data: Record<string, unknown> = {};
-      try {
-        data = JSON.parse(dataLine.slice(6)) as Record<string, unknown>;
-      } catch {
-        data = {};
-      }
+  try {
+    while (!signal?.aborted) {
+      const { done, value } = await reader.read();
       if (signal?.aborted) return;
-      onEvent(event, data);
+      buf += done ? decoder.decode() : decoder.decode(value, { stream: true });
+      const parts = buf.split(/\r?\n\r?\n/);
+      buf = done ? '' : parts.pop() ?? '';
+      for (const part of parts) {
+        const lines = part.split(/\r?\n/);
+        const event = lines.find((line) => line.startsWith('event:'))?.slice(6).trim();
+        const payload = lines.filter((line) => line.startsWith('data:'))
+          .map((line) => line.slice(5).trimStart()).join('\n');
+        if (!event || !payload) continue;
+        let data: Record<string, unknown> = {};
+        try {
+          data = JSON.parse(payload) as Record<string, unknown>;
+        } catch {
+          data = {};
+        }
+        if (signal?.aborted) return;
+        onEvent(event, data);
+      }
+      if (done) break;
     }
+  } finally {
+    signal?.removeEventListener('abort', cancel);
+    await reader.cancel().catch(() => undefined);
+    reader.releaseLock();
   }
 }
 

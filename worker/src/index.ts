@@ -4,7 +4,7 @@ import { SESSION_TEMPLATES } from '../../shared/sessionTemplates';
 import { handleDetectQuestion } from './detect-question';
 import type { WorkerEnv } from './env';
 import { handleGeminiLiveProxy, handleGeminiToken } from './gemini';
-import { errorJson, json, log, logError } from './http';
+import { errorJson, InvalidRequestError, json, log, logError } from './http';
 import { handleGetProfile, handleListProfiles, handlePutProfile } from './profiles';
 import { handleSpeechToken } from './speech-token';
 import { handleTranslate } from './translate';
@@ -31,10 +31,10 @@ export default {
       }
       return env.ASSETS.fetch(request);
     } catch (err) {
+      if (err instanceof InvalidRequestError) return errorJson(err.message, 400);
       logError({
         message: 'unhandled error',
         path: url.pathname,
-        error: err instanceof Error ? err.message : String(err),
       });
       return errorJson('Internal server error', 500);
     }

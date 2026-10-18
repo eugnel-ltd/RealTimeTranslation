@@ -7,8 +7,9 @@
     "dev": "vite --port 38220",
     "dev:https": "vite --mode development",
     "build": "tsc && vite build --mode production",
-    "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
-    "preview": "vite preview"
+    "lint": "eslint src vite.config.ts ../vitest.config.ts ../worker/src ../shared ../tests ../scripts --ext ts,tsx,mjs --resolve-plugins-relative-to . --report-unused-disable-directives --max-warnings 0",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit && tsc -p tsconfig.node.json --noEmit"
   },
   "dependencies": {
     "@heroicons/react": "^2.2.0",

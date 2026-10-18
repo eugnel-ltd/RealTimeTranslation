@@ -1,5 +1,5 @@
 import type { WorkerEnv } from './env';
-import { errorJson, json, readJson } from './http';
+import { errorJson, isString, json, readJson } from './http';
 
 export const PROFILE_IDS = ['james', 'wing'] as const;
 export type ProfileId = (typeof PROFILE_IDS)[number];
@@ -72,7 +72,7 @@ export async function handleGetProfile(env: WorkerEnv, rawId: string): Promise<R
 export async function handlePutProfile(request: Request, env: WorkerEnv, rawId: string): Promise<Response> {
   if (!env.PROFILES) return errorJson('PROFILES KV is not configured', 503);
   if (!isProfileId(rawId)) return errorJson('Unknown profile id', 404);
-  const body = await readJson<{ markdown?: string; name?: string }>(request);
+  const body = await readJson<{ markdown?: string; name?: string }>(request, { markdown: isString, name: isString });
   const markdown = typeof body.markdown === 'string' ? body.markdown : '';
   const bytes = new TextEncoder().encode(markdown).length;
   if (bytes > MAX_PROFILE_BYTES) {

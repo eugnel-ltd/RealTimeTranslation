@@ -10,9 +10,10 @@ import {
   PREP_TIMER_OPTIONS,
   QUESTION_TIMER_OPTIONS,
 } from '../../../shared/sessionTemplates';
-import config from '../config';
+import config, { isValidLanguage } from '../config';
 import { DEFAULT_HOTKEYS } from '../hotkeys';
 import type { UserSettings } from '../types';
+import { isObject, readStoredJson, writeStoredJson } from './browserStorage';
 
 const STORAGE_KEY = 'user_settings';
 
@@ -21,43 +22,11 @@ export class SettingsService {
   private currentSettings: UserSettings;
 
   private constructor() {
-    const savedSettings = localStorage.getItem(STORAGE_KEY);
-    if (!savedSettings) {
-      this.currentSettings = this.getDefaultSettings();
-      return;
-    }
-    const parsed = JSON.parse(savedSettings) as Partial<UserSettings> & { cvBackground?: string };
-    const { cvBackground, ...rest } = parsed;
-    const sessionTemplateId = isSessionTemplateId(parsed.sessionTemplateId)
-      ? parsed.sessionTemplateId
-      : getSessionTemplate(undefined).id;
-    const tpl = getSessionTemplate(sessionTemplateId);
-    this.currentSettings = {
-      ...this.getDefaultSettings(),
-      ...rest,
-      answerModel: parsed.answerModel === 'gemini-3.8-flash' || parsed.answerModel === 'gemini-3.5-flash-lite'
-        ? parsed.answerModel
-        : 'gemini-3.8-flash',
-      extraNotes: parsed.extraNotes ?? cvBackground ?? '',
-      profileId: parsed.profileId === 'james' || parsed.profileId === 'wing' ? parsed.profileId : '',
-      sessionTemplateId,
-      autoDetect: parsed.autoDetect !== false,
-      showAiAnswer: parseShowAiAnswer(parsed.showAiAnswer, tpl.defaultShowAiAnswer !== false),
-      answerWindowSeconds: coerceDetectWindowSeconds(parsed.answerWindowSeconds),
-      questionThreshold:
-        typeof parsed.questionThreshold === 'number' && Number.isFinite(parsed.questionThreshold)
-          ? parsed.questionThreshold
-          : DEFAULT_QUESTION_THRESHOLD,
-      questionTimerSeconds: pickAllowed(parsed.questionTimerSeconds, [0, ...QUESTION_TIMER_OPTIONS], tpl.timer.enabled ? tpl.timer.defaultSeconds : 0),
-      prepTimerSeconds: pickAllowed(parsed.prepTimerSeconds, [...PREP_TIMER_OPTIONS], tpl.timer.prepDefaultSeconds),
-      hotkeys: { ...DEFAULT_HOTKEYS, ...(parsed.hotkeys ?? {}) },
-    };
+    this.currentSettings = this.normalize(readStoredJson(STORAGE_KEY).value);
   }
 
   public static getInstance(): SettingsService {
-    if (!SettingsService.instance) {
-      SettingsService.instance = new SettingsService();
-    }
+    if (!SettingsService.instance) SettingsService.instance = new SettingsService();
     return SettingsService.instance;
   }
 
@@ -83,30 +52,74 @@ export class SettingsService {
     };
   }
 
-  public getSettings(): UserSettings {
+  private normalize(value: unknown): UserSettings {
+    const parsed = isObject(value) ? value : {};
+    const defaults = this.getDefaultSettings();
+    const sessionTemplateId = typeof parsed.sessionTemplateId === 'string' && isSessionTemplateId(parsed.sessionTemplateId)
+      ? parsed.sessionTemplateId : defaults.sessionTemplateId;
+    const tpl = getSessionTemplate(sessionTemplateId);
+    const hotkeys = { ...DEFAULT_HOTKEYS };
+    if (isObject(parsed.hotkeys)) {
+      for (const key of Object.keys(hotkeys) as (keyof typeof hotkeys)[]) {
+        const shortcut = parsed.hotkeys[key];
+        if (typeof shortcut === 'string' && shortcut.trim()) hotkeys[key] = shortcut;
+      }
+    }
+    const language = (value: unknown, fallback: string, allowEmpty = false, allowAuto = false) =>
+      typeof value === 'string' && isValidLanguage(value) &&
+      (allowEmpty || value !== '') && (allowAuto || value !== 'auto') ? value : fallback;
     return {
-      ...this.currentSettings,
-      hotkeys: { ...DEFAULT_HOTKEYS, ...this.currentSettings.hotkeys },
+      inputLanguage: language(parsed.inputLanguage, defaults.inputLanguage, false, true),
+      outputLanguage: language(parsed.outputLanguage, defaults.outputLanguage),
+      secondOutputLanguage: language(parsed.secondOutputLanguage, defaults.secondOutputLanguage, true),
+      theme: choose(parsed.theme, ['light', 'dark'], defaults.theme),
+      speechEngine: choose(parsed.speechEngine, ['auto', 'azure', 'gemini-translator', 'gemini-live-translate'], defaults.speechEngine),
+      splitLayout: choose(parsed.splitLayout, ['transcript-left', 'transcript-right', 'transcript-top', 'transcript-bottom'], defaults.splitLayout),
+      answerModel: choose(parsed.answerModel, ['gemini-3.8-flash', 'gemini-3.5-flash-lite'], defaults.answerModel),
+      answerLanguage: choose(parsed.answerLanguage, ['same', 'en', 'yue', 'zh-CN'], defaults.answerLanguage),
+      userContext: typeof parsed.userContext === 'string' ? parsed.userContext : '',
+      extraNotes: typeof parsed.extraNotes === 'string' ? parsed.extraNotes :
+        typeof parsed.cvBackground === 'string' ? parsed.cvBackground : '',
+      profileId: choose(parsed.profileId, ['', 'james', 'wing'], defaults.profileId),
+      sessionTemplateId,
+      autoDetect: typeof parsed.autoDetect === 'boolean' ? parsed.autoDetect : true,
+      showAiAnswer: parseShowAiAnswer(parsed.showAiAnswer, tpl.defaultShowAiAnswer !== false),
+      answerWindowSeconds: coerceDetectWindowSeconds(parsed.answerWindowSeconds),
+      questionThreshold:
+        typeof parsed.questionThreshold === 'number' && Number.isFinite(parsed.questionThreshold) &&
+        parsed.questionThreshold >= 0 && parsed.questionThreshold <= 1
+          ? parsed.questionThreshold : DEFAULT_QUESTION_THRESHOLD,
+      questionTimerSeconds: pickAllowed(parsed.questionTimerSeconds, [0, ...QUESTION_TIMER_OPTIONS], tpl.timer.enabled ? tpl.timer.defaultSeconds : 0),
+      prepTimerSeconds: pickAllowed(parsed.prepTimerSeconds, [...PREP_TIMER_OPTIONS], tpl.timer.prepDefaultSeconds),
+      hotkeys,
     };
   }
 
+  public getSettings(): UserSettings {
+    return { ...this.currentSettings, hotkeys: { ...this.currentSettings.hotkeys } };
+  }
+
   public updateSettings(newSettings: Partial<UserSettings>): UserSettings {
-    this.currentSettings = {
+    this.currentSettings = this.normalize({
       ...this.currentSettings,
       ...newSettings,
       hotkeys: { ...this.currentSettings.hotkeys, ...(newSettings.hotkeys ?? {}) },
-    };
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(this.currentSettings));
+    });
+    writeStoredJson(STORAGE_KEY, this.currentSettings);
     return this.getSettings();
   }
 
   public resetToDefaults(): UserSettings {
     this.currentSettings = this.getDefaultSettings();
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(this.currentSettings));
+    writeStoredJson(STORAGE_KEY, this.currentSettings);
     return this.getSettings();
   }
 }
 
 function pickAllowed(value: unknown, allowed: readonly number[], fallback: number): number {
   return typeof value === 'number' && allowed.includes(value) ? value : fallback;
+}
+
+function choose<T extends string>(value: unknown, allowed: readonly T[], fallback: T): T {
+  return typeof value === 'string' && allowed.includes(value as T) ? value as T : fallback;
 }
