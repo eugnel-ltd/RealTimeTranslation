@@ -18,6 +18,12 @@ Entry format (newest first):
 
 ## Entries
 
+### Verify the physical dependency destination before copying
+- Cause: a proof worktree's dependency directory still pointed to the original checkout, so a copy intended for isolated verification refreshed the shared checkout instead.
+- Fix: #9 legal readiness verification uses an owned physical install and checks the shared package bytes against its exact reviewed pin.
+- Done right: inspect `readlink -f` and confirm the destination is inside the intended worktree before copying or installing; compare lockfiles and preserve failed setup evidence before repeating checks.
+- Seen: 1× (2026-10-18)
+
 ### Scan new fixtures before freezing regression tests
 - Cause: a long public synthetic response literal under a token field passed runtime tests but failed the trusted quoted-secret-assignment gate after the first-red file was frozen.
 - Fix: PR #1 replacement preserves the original published history, declares the same public fixture value under a plain response constant before the new first-red commit, and runs the trusted scan first.

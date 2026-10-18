@@ -18,6 +18,7 @@ Verify the actual current policies and consent behavior, then record only `basel
 - `docs/legal/README.md`: record the exact artifact/consent proof; separate it from provider configuration, protected remote preview and account/release acceptance. Explain web-only privacy answers without claiming any store submission.
 - `docs/plans/9-account-policy.md`: append a dated correction to the former coupled acceptance rule while preserving the historical plan and source audit.
 - This plan: record final proof and any ordinary integration of a separately reviewed listing-only status change.
+- `LESSONS.md`: root authorised a brief dependency-isolation lesson after verification followed an existing proof-worktree symlink; no runtime or delivery rule changes.
 
 No application, renderer, shared template, legal policy content, consent control, test, dependency, Access, provider, resource or visual changes. All frozen regression files remain unchanged.
 
@@ -44,3 +45,9 @@ No application, renderer, shared template, legal policy content, consent control
 - History default-off, positive choice/reload, repeated failed withdrawal, successful retry/reload and preservation of existing history/notes passed. Policy contacts, pending ICO state, free-service claims, script-free output and navigation passed. Exact route hashes are in the legal README.
 - The installed, reviewed `eugnel-platform` pin `ed18319bfccfe250d25b415caa997efca816db11` rendered the actual manifest-backed privacy answers successfully. SHA-256: `2ba45d4ad6b22c330c89b7a54a33323554d3d289b484d4251bc178562f7d01ff`. All eleven data categories, current/conditional scope, no-tracking entries and deletion contact were inspected. Generic sheets remain scratch output, not published assets or submitted store forms.
 - The status/docs change leaves current free/private processing, conditional account facts, policy source, canonical company snapshot, renderer, application and frozen tests unchanged. Protected remote delivery, provider project eligibility and account activation acceptance remain explicitly separate. Final exact-head build/output comparison, checks and independent verdict belong to this change's PR evidence.
+
+## Verification setup correction
+
+The first full test/typecheck attempt used an old installed shared package from the original checkout; it lacked `auth/identity`, despite the current lockfile pin. This was an import/setup failure, not a source regression. An offline install then reported that the exact private archive was not cached. A copy intended for isolated proof followed the proof directory's existing dependency symlink and refreshed the original checkout; root confirmed that checkout's current lock needs the same pin and no other active lane uses those dependencies. No tracked source or lockfile changed.
+
+Root authorised the lesson above. The corrected lane uses physical dependencies inside its own worktree, with matching root/client lockfiles and installed shared source, exports, templates and CLI bytes verified against `ed18319bfccfe250d25b415caa997efca816db11`. Repeat all artifact and repository checks before review; do not count the initial failed setup as a passing source check. Preserve the setup failure record with the local proof packet and disclose it in the PR.
