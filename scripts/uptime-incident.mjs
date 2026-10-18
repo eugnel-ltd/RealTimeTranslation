@@ -1,5 +1,6 @@
 const TITLE = 'Uptime: rtt.eugnel.com is failing';
 const MARKER = '<!-- rtt-uptime-incident -->';
+const AUTOMATION_AUTHOR = 'github-actions[bot]';
 
 function runReference(runUrl, owner, repo) {
   if (typeof runUrl !== 'string') return '';
@@ -26,7 +27,9 @@ export async function manageIncident({ result, github, owner, repo, runUrl }) {
   }
   const issues = github.rest.issues;
   const open = (await github.paginate(issues.listForRepo, { owner, repo, state: 'open', per_page: 100 }))
-    .filter((issue) => !issue.pull_request && issue.title === TITLE && typeof issue.body === 'string' && issue.body.includes(MARKER));
+    .filter((issue) => !issue.pull_request
+      && issue.user?.login === AUTOMATION_AUTHOR && issue.user.type === 'Bot'
+      && issue.title === TITLE && typeof issue.body === 'string' && issue.body.includes(MARKER));
   const reference = runReference(runUrl, owner, repo);
 
   if (!result.healthy) {

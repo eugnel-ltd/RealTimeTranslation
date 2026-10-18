@@ -5,6 +5,7 @@ interface Issue {
   title: string;
   body?: string | null;
   pull_request?: unknown;
+  user?: { login?: string; type?: string } | null;
 }
 
 interface IssueApi {
