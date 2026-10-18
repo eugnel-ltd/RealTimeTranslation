@@ -1,11 +1,15 @@
 {
-  "sourceSha": "88095c89b03b0baed14b1aca2f381bcfeaad17f9",
+  "sourceSha": "470ed87e6a036387391f6fce60caaec582e97a42",
   "trackedWorkingTreeDirty": false,
   "build": {
-    "client/dist/assets/index-BicRZRZ8.js": "8b5e9e032efeca70bbd8cadd07c2d8f0b6fb517365ac271287452e72f20a205b",
     "client/dist/assets/index-D-H-KbqK.css": "1274f2a5e7acb917b2fe218f8e50ea6adc2460d01410b316475e6c96fe941c8f",
-    "client/dist/assets/microsoft.cognitiveservices.speech.sdk-DQ_GbWAc.js": "85d98cd5f093d624d3fcacef835bb050f531f1b3b501fc49975eabf781b0b306",
-    "client/dist/index.html": "4278f4cb3813396736af6181fc96130d4dea73d8767f424740ea26a205c35e32",
+    "client/dist/assets/index-DbA_xYPu.js": "b2eb786ad7a6d735b22baf0dfcbd3d64d321bd9cfab740f8f48d5bcec8adf571",
+    "client/dist/assets/microsoft.cognitiveservices.speech.sdk-CkKLkSEa.js": "75b690edd64c7e2f525c66a13ee358cc1d490f75e3cf3ed78cab865c75d36e59",
+    "client/dist/index.html": "86d595a64708e184b7fc22d414b86b45558296d83055b4273eb39940febb114f",
+    "client/dist/legal/data-use/index.html": "207a92e5b5a5276206de2bce6f363fcc0c59d2338c999624e4fda9e8edeb2358",
+    "client/dist/legal/privacy/index.html": "519567c65bd997b19b1a76af5743bfccf8cab202b2849a7ba497fe551e366545",
+    "client/dist/legal/refunds/index.html": "18c53edc8fb92cd5635a8eacf182cfeb6131b5d0c4fe40fe91a206a898d83443",
+    "client/dist/legal/terms/index.html": "612891f27a4f50a7f57dfa5e8296d23860e823b576eb9c09bb964a94e3e470bb",
     "client/dist/vite.svg": "4a748afd443918bb16591c834c401dae33e87861ab5dbad0811c3a3b4a9214fb"
   },
   "browser": "154.0.8037.57",
@@ -18,8 +22,8 @@
         "width": 1440,
         "height": 1000
       },
-      "sha256": "84a4d962128bced5b70f50d61a42f02bc86fb99a92c0746d69ebeaa552188633",
-      "bytes": 55041,
+      "sha256": "8c94a18ad533ff66e0a88540b57cdc174afe9b97a414e681bed5328b30f4ad4b",
+      "bytes": 61699,
       "caption": "Choose a session template in the existing interface."
     },
     {
@@ -28,8 +32,8 @@
         "width": 1440,
         "height": 1000
       },
-      "sha256": "78f8d59a67dc855e4fab16c4cbb7b8eba5c5b041c6f84308cc05debffe8914f6",
-      "bytes": 50408,
+      "sha256": "91f3db505ce15d401f127d5b9dc145a4545effbe01ade01199956642aac4a240",
+      "bytes": 56900,
       "caption": "Review a transcript saved in this browser (synthetic example)."
     },
     {
@@ -38,8 +42,8 @@
         "width": 390,
         "height": 844
       },
-      "sha256": "0107f5acfd02069d003c5c5f9d1f5662e0de61804162938156f321814b18adac",
-      "bytes": 43135,
+      "sha256": "d2feebf4abd8e8aec651ec004b6771da35d7ae5c8540f99ddf20af545f773aad",
+      "bytes": 49789,
       "caption": "Choose a session template in the existing interface."
     },
     {
@@ -48,8 +52,8 @@
         "width": 390,
         "height": 844
       },
-      "sha256": "d40950dfea6c19000e06b6a387d4e701a0c43b650c76f7fdcc893583836e84c5",
-      "bytes": 38142,
+      "sha256": "d7380a82c9081c30468b4c5c61f276b641ba79a16e913800004f92d65d0cd59b",
+      "bytes": 44421,
       "caption": "Review a transcript saved in this browser (synthetic example)."
     }
   ]
