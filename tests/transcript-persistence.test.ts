@@ -106,7 +106,8 @@ beforeEach(() => {
   speech.start.mockResolvedValue(undefined); speech.stop.mockResolvedValue(undefined);
   slots = []; component = App; failWrites = 0;
   (SettingsService as any).instance = undefined;
-  store = new Map();
+  // These existing regressions exercise the explicitly requested saved-history feature.
+  store = new Map([['user_settings', JSON.stringify({ saveTranscriptHistory: true })]]);
   storage = {
     getItem: vi.fn((key: string) => store.get(key) ?? null),
     setItem: vi.fn((key: string, value: string) => {
@@ -252,4 +253,57 @@ it('History renders and deletes safely if storage access becomes blocked', () =>
   expect(() => props('ConfirmDialog').onConfirm()).not.toThrow();
   render();
   expect(JSON.stringify(tree)).toContain('1');
+});
+
+function chooseHistory(enabled: boolean) {
+  props('Header').onOpenSettings(); render();
+  props('Settings').onUpdate({ ...props('Settings').initialSettings, saveTranscriptHistory: enabled }); render();
+}
+
+it('does not save new transcripts without a positive history choice and preserves existing storage', async () => {
+  const oldHistory = JSON.stringify([{ sessionId: 'old-session', timestamp: '2026-10-17T00:00:00Z', transcriptions: [] }]);
+  const oldSettings = JSON.stringify({ userContext: 'Keep context', extraNotes: 'Keep notes' });
+  store.set('transcriptionHistory', oldHistory); store.set('user_settings', oldSettings);
+  (SettingsService as any).instance = undefined; slots = []; render();
+  await toggle(); emit('Not requested for storage.'); await toggle();
+  expect(finals()[0].original).toBe('Not requested for storage.');
+  expect(historyWrites()).toHaveLength(0);
+  expect(store.get('transcriptionHistory')).toBe(oldHistory);
+  expect(store.get('user_settings')).toBe(oldSettings);
+});
+
+it('saves only future final transcripts after explicit opt-in, never retroactive text', async () => {
+  chooseHistory(false); await toggle(); emit('Before choice.');
+  chooseHistory(true); emit('After choice.'); await toggle();
+  expect(history()[0].transcriptions.map((entry: any) => entry.originalText)).toEqual(['After choice.']);
+  expect(finals().map((entry: any) => entry.original)).toEqual(['Before choice.', 'After choice.']);
+});
+
+it('withdrawal immediately blocks a running session and drops retries without deleting saved history', async () => {
+  await toggle(); emit('Saved before withdrawal.');
+  failWrites = 1; emit('Failed pending write.');
+  const saved = store.get('transcriptionHistory');
+  chooseHistory(false);
+  const writes = historyWrites().length;
+  emit('While off.'); await toggle();
+  expect(historyWrites()).toHaveLength(writes);
+  expect(store.get('transcriptionHistory')).toBe(saved);
+  chooseHistory(true); await toggle(); emit('New request.'); await toggle();
+  expect(history().flatMap((session: any) => session.transcriptions.map((entry: any) => entry.originalText)))
+    .toEqual(['New request.', 'Saved before withdrawal.']);
+  expect(finals().map((entry: any) => entry.original)).toContain('Failed pending write.');
+});
+
+it('opted-in Clear Transcripts flushes pending finals and keeps durable history', async () => {
+  await toggle(); failWrites = 1; emit('Flush on clear.');
+  expect(finals()[0].isSaved).not.toBe(true);
+  props('Header').onClearHistory(); render();
+  expect(finals()).toHaveLength(0);
+  expect(history()[0].transcriptions[0].originalText).toBe('Flush on clear.');
+});
+
+it('provides working legal page destinations from the application', () => {
+  for (const href of ['/legal/privacy/', '/legal/terms/', '/legal/refunds/', '/legal/data-use/']) {
+    expect(find((node) => node.type === 'a' && node.props.href === href), `Missing app link ${href}`).toBeDefined();
+  }
 });

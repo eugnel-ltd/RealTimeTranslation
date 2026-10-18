@@ -13,6 +13,7 @@ export interface TranscriptEntry {
   sourceLanguage?: string;
   targetLanguage?: string;
   isSaved?: boolean;
+  historyConsentGeneration?: number;
 }
 
 export interface TranscriptionRecord {
@@ -56,6 +57,7 @@ export interface UserSettings {
   answerLanguage: AnswerLanguage;
   userContext: string;
   extraNotes: string;
+  saveTranscriptHistory?: boolean;
   profileId: CandidateProfileId;
   questionThreshold: number;
   sessionTemplateId: SessionTemplateId;
