@@ -18,6 +18,12 @@ Entry format (newest first):
 
 ## Entries
 
+### Verify automation ownership before managing issues
+- Cause: uptime incident matching trusted a public title and marker, allowing a human issue to suppress an outage incident and be closed on recovery.
+- Fix: issue #35 requires the expected GitHub Actions login and Bot type before deduplication, comments or closure.
+- Done right: treat title/body markers as identifiers only after verified REST author metadata establishes ownership; test humans, missing authors and mixed lists.
+- Seen: 1× (2026-10-18)
+
 ### Refresh verification commands after syncing main
 - Cause: issue #18 used the earlier command list after #15 added test typechecking, so runtime-green mock tests still contained a TypeScript error.
 - Fix: issue #18 replacement branch preserves the original history, locks correctly typed tests before applying the unchanged source repair, and passes all four checks.
