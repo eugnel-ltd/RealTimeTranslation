@@ -35,7 +35,6 @@ export default {
       logError({
         message: 'unhandled error',
         path: url.pathname,
-        error: err instanceof Error ? err.message : String(err),
       });
       return errorJson('Internal server error', 500);
     }

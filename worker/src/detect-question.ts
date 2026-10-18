@@ -113,7 +113,7 @@ export async function handleDetectQuestion(
         log({ message: 'jev cooldown started', status, ms: JEV_COOLDOWN_MS });
         return json(pauseDetect(mode, 'jev_transient'));
       }
-      logError({ message: 'jev unexpected error', error: err instanceof Error ? err.message : String(err) });
+      logError({ message: 'jev unexpected error', status });
       markJevCooldown(now);
       return json(pauseDetect(mode, 'jev_error'));
     }
@@ -316,8 +316,8 @@ async function detectWithGeminiOrEmpty(
   try {
     const result = await detectWithGemini(env, segments, lastAnswered, fetchImpl);
     return { ...result, fallbackReason };
-  } catch (err) {
-    logError({ message: 'gemini detect failed', error: err instanceof Error ? err.message : String(err) });
+  } catch {
+    logError({ message: 'gemini detect failed' });
     return {
       detector: 'unavailable',
       shouldAnswer: false,

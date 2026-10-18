@@ -171,8 +171,8 @@ export async function handleGeminiLiveProxy(request: Request, env: WorkerEnv): P
     }
     gemini.accept();
     attachGeminiProxy(server, gemini);
-  } catch (err) {
-    logError({ message: 'gemini live proxy failed', error: err instanceof Error ? err.message : String(err) });
+  } catch {
+    logError({ message: 'gemini live proxy failed' });
     server.close(1011, 'proxy failed');
     return errorJson('Gemini live proxy failed', 502);
   }
