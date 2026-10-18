@@ -26,7 +26,7 @@ pricing:
 
 # The product baseline (skill `modules/baseline.md`). Values: done | missing | waived | excluded.
 baseline:
-  accounts: missing          # Cloudflare Access lets the owner in; no customer accounts
+  accounts: missing          # implementation is default-off; customer activation/live acceptance pending
   durable_data: done         # KV namespace PROFILES (candidate profiles)
   payments: missing
   legal: missing
@@ -41,7 +41,7 @@ sentry:
   project: rtt
   scope: server
 
-# Current private web processing; provider sources are in docs/legal/provider-evidence.md.
+# Current private processing and conditional account capability; provider evidence is in docs/legal/.
 legal:
   audience: general
   effective: "2026-10-18"
@@ -66,10 +66,30 @@ legal:
       basis: Legitimate interests in the authorised professional workflow, subject to a lawful basis and safeguards for any third-party profile data
       retention: No automatic KV expiry; until overwritten or removed by an operator; provider copies are separate
       linked: "Yes"
+    - category: Account identity and sign-in proofs when enabled
+      purpose: Offer email-code, Google or Apple sign-in, link verified methods and protect account access; these features are disabled in the current private service
+      basis: Legitimate interests in providing requested account access and preventing abuse; requested necessary sign-in storage
+      retention: Session and deletion-ticket validity up to 30 days; email codes and flows up to 10 minutes; validity is not physical cleanup; pending provider credentials and security records follow the Data use limits
+      linked: "Yes"
+    - category: Customer candidate profiles when enabled
+      purpose: Keep profiles separate for each verified account and include the selected profile in requested Google answers; existing owner KV profiles remain separate
+      basis: Legitimate interests in providing the requested professional workflow, subject to safeguards and a lawful basis for third-party information
+      retention: No automatic D1 expiry; overwrite or completed account erasure removes current profile records; backups, providers and minimal permanent security fences have separate limits
+      linked: "Yes"
+    - category: Account security, deletion progress and sign-in mail accounting when enabled
+      purpose: Prevent replay and abuse, deliver requested codes, resume deletion safely and avoid restoring erased accounts
+      basis: Legitimate interests in securing accounts and completing deletion; legal obligation where a data right applies
+      retention: Bounded maintenance removes eligible expired or completed records; completed deletion receipts after 90 days without tickets; mail accounting uses a 62-day cutoff and calendar buckets; permanent random account-ID security fences and unresolved provider work remain as described in Data use
+      linked: "Yes"
+    - category: Turnstile browser and network signals when configured for sign-in
+      purpose: Check requested sign-in attempts for abuse; Cloudflare separately uses signals to improve bot detection under its own notice
+      basis: Legitimate interests in necessary sign-in security; Cloudflare's separate controller processing follows its Turnstile privacy notice
+      retention: Provider-controlled processing under the Turnstile notice; RTT makes no unsupported fixed retention or local-region promise
+      linked: "Yes"
     - category: Access identity, IP address and operational metadata
       purpose: Authenticate the authorised owner, prevent abuse and investigate service errors
       basis: Legitimate interests in securing and operating the private service
-      retention: Workers Paid logs follow Cloudflare's current seven-day period; Access periods depend on its plan and exports; the app does not create an account database
+      retention: Workers Paid logs follow Cloudflare's current seven-day period; Access periods depend on its plan and exports; customer account databases remain disabled in the current private service
       linked: "Yes"
     - category: Support email sender, recipient, subject, body and timestamps
       purpose: Receive and resolve support and privacy requests
@@ -92,8 +112,14 @@ legal:
       purpose: Optional transcript-window question detection; public privacy terms exclude training on API input and DPA retention is purpose-based
       location: United States hosting, with the published DPA and UK transfer terms
     - name: Cloudflare, Inc.
-      purpose: Hosting, Access authentication, request security, profile KV, support email routing and R2 records
+      purpose: Hosting, Access, request security, owner profile KV and support email/R2; when enabled, separate identity/profile/mail-quota D1, code delivery and Turnstile with its separate controller role for detection improvement
       location: Global service infrastructure under Cloudflare's DPA and UK transfer terms; no additional regional restriction is claimed
+    - name: Google sign-in
+      purpose: When enabled, verify the requested openid/email sign-in and linked method; Google also processes security information under its own privacy notice
+      location: Processing under Google's privacy notice; no account-project regional restriction is established
+    - name: Sign in with Apple
+      purpose: When enabled, verify the requested sign-in and email or relay address, retain encrypted grants for revocation and process verified account-security notifications
+      location: Processing under Apple's Sign in with Apple notice; no RTT-specific region or provider retention period is claimed
     - name: Sentry (Functional Software Inc.)
       purpose: Planned server diagnostics using fixed failure categories and route/status tags, only when reporting is configured
       location: Planned project region is not established; verify it before reporting is activated
