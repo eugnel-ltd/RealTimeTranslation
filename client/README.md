@@ -48,3 +48,11 @@ export default tseslint.config({
   },
 })
 ```
+
+## Local tooling security patch
+
+The development toolchain uses a local MIT-licensed `braces` 3.0.3 copy with a hard depth guard.
+The direct development dependency and npm override route both micromatch and chokidar to it.
+See [the patch and audit notes](vendor/braces/README.md) for provenance, scope and maintenance.
+Keep raw audit findings visible: the upstream version remains 3.0.3, while the installed local source contains the repair.
+This changes no application style, content glob or Tailwind version.
