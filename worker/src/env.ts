@@ -1,6 +1,15 @@
 import type { RateLimit } from '@cloudflare/workers-types';
 
 export interface WorkerEnv {
+  ACCOUNTS_ENABLED?: string;
+  IDENTITY_SERVICE?: Fetcher;
+  IDENTITY_CALLER_ID?: string;
+  IDENTITY_CALLER_SECRET?: string;
+  ACCOUNT_DB?: D1Database;
+  ACCOUNT_ENVIRONMENT?: string;
+  ACCOUNT_ORIGIN?: string;
+  IDENTITY_ERASER_CALLER?: string;
+  IDENTITY_ERASER_SECRET?: string;
   SENTRY_DSN?: string;
   DEPLOYMENT_SHA?: string;
   AZURE_SPEECH_KEY?: string;
