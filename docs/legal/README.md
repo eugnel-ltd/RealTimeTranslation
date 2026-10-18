@@ -1,6 +1,6 @@
 # RTT legal delivery and evidence
 
-The application now links generated [privacy](/legal/privacy/), [terms](/legal/terms/), [free-service](/legal/refunds/) and [data-use](/legal/data-use/) pages. The build creates them from reviewed product facts and shared templates. The [inventory](data-inventory.md) and [provider evidence](provider-evidence.md) record their scope for [#9](https://github.com/eugnel-ltd/RealTimeTranslation/issues/9). Source integration is separate from live delivery proof; the baseline stays missing until acceptance is verified.
+The legal artifact baseline is complete. The application links generated [privacy](/legal/privacy/), [terms](/legal/terms/), [free-service](/legal/refunds/) and [data-use](/legal/data-use/) pages, built from reviewed product facts and shared templates. Current local page, privacy-answer and consent acceptance is recorded below. The [inventory](data-inventory.md) and [provider evidence](provider-evidence.md) retain the operational requirements for provider eligibility, account activation and release. Local artifact acceptance does not establish protected remote delivery.
 
 RTT uses shared code from `eugnel-platform`, company facts from `eugnel-hq`, and the AI-SDLC delivery process. Do not copy a company record or legal renderer into this repository.
 
@@ -66,9 +66,26 @@ These diagnostics do not list every publication gap. The renderer checks require
 3. Check free-product payment clauses, account deletion claims, processor roles, international transfers, consent controls and channel scope in every generated page.
 4. Set an effective date when the policy set is ready. Re-run the CLI with current canonical facts.
 5. Obtain independent review of the exact source and output. Confirm policy links against the actual product through the authorised release process.
-6. Keep issue #9 and the legal baseline open until the required facts, pages and delivery checks are complete.
+6. Complete the legal baseline after the current facts, pages, channel privacy answers and actual consent controls pass independent acceptance. Record protected remote delivery in the release evidence. Account callbacks, migrations and maintenance remain account activation checks.
 
-The bounded [shared-template correction](https://github.com/eugnel-ltd/eugnel-platform/pull/45) is merged. It does not complete RTT policies or the legal baseline. It does not establish RTT's provider terms or implement consent controls. Do not publish a consent sheet that promises switches the app lacks. Store answer sheets are not evidence of a store release.
+The bounded [shared-template correction](https://github.com/eugnel-ltd/eugnel-platform/pull/45) is merged. That change alone did not deliver RTT policies or consent controls; the subsequent RTT implementation and current acceptance below complete those artifacts. Provider project settings require their own evidence. Do not publish a generic consent sheet that promises switches the app lacks. Store answer sheets are not evidence of a store release.
+
+## Completed legal artifacts: 18 October 2026
+
+The baseline definition is AI-SDLC `modules/baseline.md`: policies, channel privacy answers and consent where required. Exact current source `470ed87e6a036387391f6fce60caaec582e97a42` passed a fresh build and real local Chromium acceptance with synthetic isolated browser data. No provider, microphone, credential, real user data or live service was used. The read-only account bootstrap fixture explicitly selected the existing owner mode, `{enabled:false}`; external requests, API writes and redirects were refused.
+
+The browser verified nine acceptance checks: history saving defaults off without a positive choice; explicit opt-in persists across reload; two failed withdrawal saves keep Settings open, show the error and preserve durable bytes; successful retry persists withdrawal across reload; existing history and notes remain. All four actual built routes returned 200 HTML, linked to each other and the app, exposed the known contacts and contained no scripts. Privacy retained pending application C2062045 without an invented registration number; the free-service page made no paid-checkout claim.
+
+| Built route | SHA-256 |
+|---|---|
+| `/legal/privacy/` | `519567c65bd997b19b1a76af5743bfccf8cab202b2849a7ba497fe551e366545` |
+| `/legal/terms/` | `612891f27a4f50a7f57dfa5e8296d23860e823b576eb9c09bb964a94e3e470bb` |
+| `/legal/refunds/` | `18c53edc8fb92cd5635a8eacf182cfeb6131b5d0c4fe40fe91a206a898d83443` |
+| `/legal/data-use/` | `207a92e5b5a5276206de2bce6f363fcc0c59d2338c999624e4fda9e8edeb2358` |
+
+The installed shared renderer also successfully rendered `store-privacy-answers.md` from the same manifest and canonical company snapshot into scratch output. Its eleven categories preserve current versus conditional processing, no tracking and the real deletion contact `hello@eugnel.com`. RTT currently declares only the web channel; there is no App Store or Play listing/form to submit. These are supported source answers for the current channel, not a store submission or new store claim. The generic consent sheet is not published; actual web controls and the data-use page describe the available choices.
+
+Reproduce the artifact checks with `npm run build`, the existing legal/history regression suites, and a loopback server for `client/dist`. Use an isolated browser context and synthetic settings/history to exercise the sequence above. The shared CLI accepts `--manifest product.yaml --company legal/company.snapshot.yaml --out <scratch-directory>` at `node_modules/eugnel-platform/packages/legal/bin/render.mjs`; keep its generic sheets out of publishable assets. Preserve the original frozen tests. The baseline completion changes no policy, renderer, application, consent or visual behavior.
 
 ## Requests and retention evidence
 
@@ -82,4 +99,6 @@ A future retention schedule needs matching code or operational controls. A polic
 
 The [account inventory](data-inventory.md#conditional-account-processing) cites the audited shared source and RTT consumer. Rendered-page regressions cover conditional availability, provider notices, credential validity versus physical cleanup, retryable deletion and limited browser cache removal. Preserve the existing history opt-in, buffered-audio disclosure and all seven original legal/history test files.
 
-Before activation, use a separate protected preview and the reviewed release process to check the four real routes, pre-sign-in policy links, actual Access/Apple callback behavior, provider setup, database migrations and two-account/device signup/signin/link/signout/delete/retry. Confirm sender previews, database jurisdiction/backup plan and bounded maintenance receipts. Record exact source, deployment/version and nonsecret results. No external resources or production flags are changed by this policy slice; the legal and accounts baselines remain missing until actual acceptance.
+Account activation still requires a separate protected preview and the reviewed release process: actual Access/Apple callbacks, provider setup, database migrations and two-account/device signup/signin/link/signout/delete/retry. Confirm sender previews, database jurisdiction/backup plan and bounded maintenance receipts. Record exact source, deployment/version and nonsecret results under the account acceptance work; `baseline.accounts` remains missing.
+
+The release must verify the four protected remote routes and pre-sign-in links against its exact deployed build. Google-enabled UK use still requires direct evidence of the active Gemini project's billing eligibility; public terms or a working key do not establish it. The inventory's actual provider/resource/retention checks remain requirements where those services are used or enabled. Legal artifact completion does not attest to any of those settings, change Access, activate accounts, approve expenditure or waive the separate publishing gate. The product stays `building` until the full release requirements pass.
