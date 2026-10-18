@@ -32,7 +32,7 @@ baseline:
   legal: done               # current policies, privacy answers and actual consent controls verified locally
   observability: missing     # instrumentation ready; live Sentry, monitor and usage evidence pending
   support: missing
-  listing: missing
+  listing: done              # verified icon, local-preview screenshots, description, what's new and privacy references
 waivers: {}
 
 # Destination metadata is not proof that the project, secret or monitor is live.
