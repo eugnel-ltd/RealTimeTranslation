@@ -1,0 +1,352 @@
+# Vendored from eugnel-ltd/ai-sdlc at b217812bca40c0b3d3ff1ba012ed8c4e33ee2636.
+# Local adaptations: trusted main checkouts and trusted GitHub review-comment metadata.
+# AI-SDLC checks: the PR-time controls that back the must-hold rules, for every agent on every CLI.
+#
+# Reusable workflow. An adopting repo calls it from a thin workflow (templates/workflows/
+# ai-sdlc-checks.yml). The checks run the skill's scripts from `.ai-sdlc/` in the adopting repo
+# (installed and refreshed by scripts/adopt.sh), because a caller's token cannot read the private
+# skill repo. The one implementation is tested in the skill repo (tests/).
+#
+# Trust. Every script is read from the BASE branch (`git show origin/<base>:<scripts_dir>/<name>`),
+# never from the PR checkout, so a PR cannot weaken the gate that checks it: a change to
+# `.ai-sdlc/` reaches the base only through a reviewed PR. The scripts never execute PR code; they
+# read the PR's diff and comments as data. The caller therefore runs on `pull_request_target`,
+# whose workflow definition also comes from the base. A script missing on the base fails the job:
+# the adoption PR must merge (before the checks are required) before they gate. Two exceptions:
+# the Written-by warning step (`continue-on-error: true`) and the cloudflare-cost job, which
+# skips a missing script until the refresh PR merges.
+#
+#   review-on-head       the latest review of the PR's current head is an APPROVE (merge gate)
+#   owner-decisions      docs/owner-decisions.md only gains lines
+#   locked-tests         on fix/* branches, the committed failing test is unchanged
+#   secret-scan          credential-shaped text among the lines the PR adds
+#   manifest             product.yaml (when the repo has one) is valid and a published product has
+#                        its baseline; needs python3 with PyYAML on the runner
+#
+#   cloudflare-cost      wrangler configs stay inside the approved US$5 Workers Paid plan
+#
+# review-on-head runs on pull_request_target and on issue_comment (created, edited, deleted),
+# because the review lands after the push and can be edited or removed. A run started by a comment
+# belongs to the default branch, not to the PR head, so the job writes a commit status
+# `ai-sdlc/review-on-head` on the PR's head sha in the same step that computes it, on success and
+# on failure alike. Runs for one PR and head are serialised (concurrency group per PR and head), so
+# the last run to finish is the last comment's and no run for an older head can displace one for
+# the current head. Require that status context in branch protection, not the job; the other three
+# jobs are required by name.
+#
+# Runner. Self-hosted by default, by owner decision (14 Oct 2026): no paid Actions minutes. The
+# runner needs git, gh (signed in through GH_TOKEN, as here) and a POSIX sh. Because the checks
+# never execute PR code, a self-hosted runner is as safe here as a hosted one.
+name: AI-SDLC checks
+
+on:
+  workflow_call:
+    inputs:
+      base:
+        description: The base branch
+        type: string
+        default: main
+      scripts_dir:
+        description: Where the skill's check scripts live in this repo
+        type: string
+        default: .ai-sdlc
+      test_paths:
+        description: Pathspecs that identify test files, space-separated
+        type: string
+        default: "tests/ :(glob)**/test_*.py :(glob)**/*_test.go :(glob)**/*.test.* :(glob)**/*.spec.*"
+      runs_on:
+        description: Runner label(s) as a JSON array; the runner holds git, gh and sh
+        type: string
+        default: '["self-hosted"]'
+
+permissions:
+  contents: read
+  pull-requests: read
+  issues: read
+  statuses: write
+
+# The PR's own commits are fetched as data (refs/pull/<n>/head) and never checked out as the
+# working tree the scripts run from. The refspec forces the update ("+"): a self-hosted runner
+# keeps refs/remotes/pr/head from the last PR it checked, and a plain fetch refuses that
+# non-fast-forward update, exits 1 and, with -q, prints nothing.
+
+jobs:
+  resolve:
+    name: Resolve the PR and its head
+    runs-on: ${{ fromJSON(inputs.runs_on) }}
+    timeout-minutes: 10
+    outputs:
+      number: ${{ steps.pr.outputs.number }}
+      head: ${{ steps.pr.outputs.head }}
+      branch: ${{ steps.pr.outputs.branch }}
+      is_pr: ${{ steps.pr.outputs.is_pr }}
+    steps:
+      - id: pr
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT: ${{ github.event_name }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_HEAD: ${{ github.event.pull_request.head.sha }}
+          PR_BRANCH: ${{ github.event.pull_request.head.ref }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          IS_ISSUE_PR: ${{ github.event.issue.pull_request != null }}
+        run: |
+          set -eu
+          command -v gh >/dev/null || { echo "::error::gh is not installed on this runner"; exit 2; }
+          if [ "$EVENT" = pull_request ] || [ "$EVENT" = pull_request_target ]; then
+            echo "number=$PR_NUMBER" >> "$GITHUB_OUTPUT"
+            echo "head=$PR_HEAD" >> "$GITHUB_OUTPUT"
+            echo "branch=$PR_BRANCH" >> "$GITHUB_OUTPUT"
+            echo "is_pr=true" >> "$GITHUB_OUTPUT"
+          elif [ "$EVENT" = issue_comment ] && [ "$IS_ISSUE_PR" = true ]; then
+            # gh's own --jq: a self-hosted runner need not have jq. The head is validated before
+            # it is published, so an empty or odd answer fails the job instead of writing a status
+            # on the wrong ref.
+            head=$(gh pr view "$ISSUE_NUMBER" --repo "$GITHUB_REPOSITORY" --json headRefOid --jq .headRefOid)
+            branch=$(gh pr view "$ISSUE_NUMBER" --repo "$GITHUB_REPOSITORY" --json headRefName --jq .headRefName)
+            case "$head" in *[!0-9a-f]*|"") echo "::error::could not resolve the head of #$ISSUE_NUMBER: '$head'"; exit 2 ;; esac
+            [ ${#head} -eq 40 ] || { echo "::error::head of #$ISSUE_NUMBER is not a 40-character sha: '$head'"; exit 2; }
+            [ -n "$branch" ] || { echo "::error::could not resolve the head branch of #$ISSUE_NUMBER"; exit 2; }
+            echo "number=$ISSUE_NUMBER" >> "$GITHUB_OUTPUT"
+            echo "head=$head" >> "$GITHUB_OUTPUT"
+            echo "branch=$branch" >> "$GITHUB_OUTPUT"
+            echo "is_pr=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "is_pr=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  review-on-head:
+    name: Independent APPROVE names the head
+    needs: resolve
+    if: needs.resolve.outputs.is_pr == 'true'
+    runs-on: ${{ fromJSON(inputs.runs_on) }}
+    timeout-minutes: 10
+    # One group per PR and head: a late run for an older head can never replace or cancel a queued
+    # run for the current head, and a status is only ever written to the head its group names.
+    concurrency:
+      group: ai-sdlc-review-on-head-${{ github.repository }}-${{ needs.resolve.outputs.number }}-${{ needs.resolve.outputs.head }}
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          ref: main
+          persist-credentials: false
+      - name: Check the latest review of ${{ needs.resolve.outputs.head }} and write its status
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ needs.resolve.outputs.number }}
+          HEAD: ${{ needs.resolve.outputs.head }}
+          BASE: ${{ inputs.base }}
+          SCRIPTS: ${{ inputs.scripts_dir }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        # GitHub runs `bash -e`, so every failing command is wrapped in if/else: the status POST must
+        # run on a failure too, or a revoked approval would leave the last success in place.
+        run: |
+          set -u
+          if ! git fetch -q origin "$BASE"; then
+            code=2; line="trusted base unavailable"
+            echo "::error::could not fetch the trusted base"
+          elif git show "origin/$BASE:$SCRIPTS/review_on_head.sh" > "$RUNNER_TEMP/review_on_head.sh" 2>/dev/null; then
+            # This repo is public. GitHub's author association, never PR content, selects
+            # the comments the unchanged upstream parser may treat as review evidence.
+            if gh api --paginate "repos/$GITHUB_REPOSITORY/issues/$PR/comments?per_page=100" \
+                --jq 'if type != "array" then error("invalid comments response") else .[] | if (.body | type) != "string" or (.author_association | type) != "string" then error("invalid comment metadata") else select(.author_association == "OWNER" or .author_association == "MEMBER" or .author_association == "COLLABORATOR") | .body + "\u001e" end end' \
+                > "$RUNNER_TEMP/trusted-review-comments.txt"; then
+              if REVIEW_ON_HEAD_COMMENTS="$RUNNER_TEMP/trusted-review-comments.txt" \
+                  sh "$RUNNER_TEMP/review_on_head.sh" "$PR" "$HEAD" --repo "$GITHUB_REPOSITORY" > result.txt 2>&1; then code=0; else code=$?; fi
+              cat result.txt
+              line=$(head -1 result.txt | cut -c1-140)
+            else
+              code=2; line="trusted review comments unavailable"
+              echo "::error::could not read trusted GitHub review comments"
+            fi
+          else
+            echo "::error::$SCRIPTS/review_on_head.sh is not on $BASE: merge the adoption PR (scripts/adopt.sh) before requiring this check"
+            code=2; line="review_on_head.sh missing on $BASE"
+          fi
+          # Read and publish in one step, inside the per-PR-and-head concurrency group. GitHub keeps
+          # the latest status per context.
+          case "$code" in 0) state=success ;; 1) state=failure ;; *) state=error ;; esac
+          if gh api -X POST "repos/$GITHUB_REPOSITORY/statuses/$HEAD" \
+               -f state="$state" -f context=ai-sdlc/review-on-head -f target_url="$RUN_URL" \
+               -f description="$line" > /dev/null; then
+            echo "status ai-sdlc/review-on-head=$state on $HEAD"
+          else
+            echo "::error::could not write the status ai-sdlc/review-on-head on $HEAD"; [ "$code" -ne 0 ] || code=2
+          fi
+          exit "$code"
+
+  owner-decisions:
+    name: owner-decisions.md is append-only
+    needs: resolve
+    if: needs.resolve.outputs.is_pr == 'true' && github.event_name != 'issue_comment'
+    runs-on: ${{ fromJSON(inputs.runs_on) }}
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          ref: main
+          persist-credentials: false
+          fetch-depth: 0
+      - name: No removed lines in docs/owner-decisions.md
+        env:
+          BASE: ${{ inputs.base }}
+          PR: ${{ needs.resolve.outputs.number }}
+          SCRIPTS: ${{ inputs.scripts_dir }}
+        run: |
+          set -u
+          git fetch -q origin "$BASE" "+refs/pull/$PR/head:refs/remotes/pr/head"
+          if ! git show "origin/$BASE:$SCRIPTS/owner_decisions_check.sh" > "$RUNNER_TEMP/owner_decisions_check.sh" 2>/dev/null; then
+            echo "::error::$SCRIPTS/owner_decisions_check.sh is not on $BASE: merge the adoption PR (scripts/adopt.sh) before requiring this check"; exit 2
+          fi
+          sh "$RUNNER_TEMP/owner_decisions_check.sh" "origin/$BASE" pr/head
+
+  locked-tests:
+    name: A fix leaves its failing test alone
+    needs: resolve
+    if: needs.resolve.outputs.is_pr == 'true' && github.event_name != 'issue_comment'
+    runs-on: ${{ fromJSON(inputs.runs_on) }}
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          ref: main
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Compare test files with the commit that added them
+        env:
+          BASE: ${{ inputs.base }}
+          PR: ${{ needs.resolve.outputs.number }}
+          BRANCH: ${{ needs.resolve.outputs.branch }}
+          TEST_PATHS: ${{ inputs.test_paths }}
+        run: |
+          set -eu
+          case "$BRANCH" in fix/*) ;; *) echo "not a fix/ branch: skipped"; exit 0 ;; esac
+          git fetch -q origin "$BASE" "+refs/pull/$PR/head:refs/remotes/pr/head"
+          HEAD=pr/head
+          # shellcheck disable=SC2086
+          first=$(git log --reverse --format=%H "origin/$BASE..$HEAD" -- $TEST_PATHS | head -1)
+          [ -n "$first" ] || { echo "no test commit on this branch: skipped (the PR must say why)"; exit 0; }
+          # shellcheck disable=SC2086
+          locked=$(git diff-tree --no-commit-id --name-only -r "$first" -- $TEST_PATHS)
+          [ -n "$locked" ] || { echo "no test files in $first: skipped"; exit 0; }
+          # shellcheck disable=SC2086
+          changed=$(git --literal-pathspecs diff --no-renames --name-status "$first" "$HEAD" -- $locked)
+          if [ -n "$changed" ]; then
+            echo "::error::LOCKED-TESTS FAIL: the failing test committed in ${first%${first#????????????}} changed afterwards. Fix the code, not the test."
+            printf '%s\n' "$changed"; exit 1
+          fi
+          echo "LOCKED-TESTS OK: $(printf '%s\n' "$locked" | wc -l | tr -d ' ') file(s) unchanged since ${first%${first#????????????}}"
+
+  secret-scan:
+    name: No credentials in the PR range
+    needs: resolve
+    if: needs.resolve.outputs.is_pr == 'true' && github.event_name != 'issue_comment'
+    runs-on: ${{ fromJSON(inputs.runs_on) }}
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          ref: main
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Scan added lines (reports file, line and rule, never the text)
+        env:
+          BASE: ${{ inputs.base }}
+          PR: ${{ needs.resolve.outputs.number }}
+          SCRIPTS: ${{ inputs.scripts_dir }}
+        run: |
+          set -u
+          git fetch -q origin "$BASE" "+refs/pull/$PR/head:refs/remotes/pr/head"
+          if ! git show "origin/$BASE:$SCRIPTS/secret_scan.sh" > "$RUNNER_TEMP/secret_scan.sh" 2>/dev/null; then
+            echo "::error::$SCRIPTS/secret_scan.sh is not on $BASE: merge the adoption PR (scripts/adopt.sh) before requiring this check"; exit 2
+          fi
+          sh "$RUNNER_TEMP/secret_scan.sh" "origin/$BASE" pr/head
+
+      - name: Written by names a vendor (warning)
+        if: github.event_name == 'pull_request_target' || github.event_name == 'pull_request'
+        continue-on-error: true
+        env:
+          BASE: ${{ inputs.base }}
+          SCRIPTS: ${{ inputs.scripts_dir }}
+          BODY: ${{ github.event.pull_request.body }}
+        run: |
+          set -eu
+          git show "origin/$BASE:$SCRIPTS/written_by_check.py" > "$RUNNER_TEMP/written_by_check.py"
+          printf '%s\n' "$BODY" > "$RUNNER_TEMP/pr-body.txt"
+          git -c core.quotePath=false diff --name-only "origin/$BASE...pr/head" > "$RUNNER_TEMP/pr-files.txt"
+          python3 "$RUNNER_TEMP/written_by_check.py" --body-file "$RUNNER_TEMP/pr-body.txt" --files "$RUNNER_TEMP/pr-files.txt" > "$RUNNER_TEMP/written-by.txt"
+          cat "$RUNNER_TEMP/written-by.txt"
+          tail -1 "$RUNNER_TEMP/written-by.txt" >> "$GITHUB_STEP_SUMMARY"
+
+  manifest:
+    name: product.yaml is valid and a published product has its baseline
+    needs: resolve
+    if: needs.resolve.outputs.is_pr == 'true' && github.event_name != 'issue_comment'
+    runs-on: ${{ fromJSON(inputs.runs_on) }}
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          ref: main
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Check the PR head's product.yaml with the base branch's script
+        env:
+          BASE: ${{ inputs.base }}
+          PR: ${{ needs.resolve.outputs.number }}
+          SCRIPTS: ${{ inputs.scripts_dir }}
+        run: |
+          set -u
+          git fetch -q origin "$BASE" "+refs/pull/$PR/head:refs/remotes/pr/head"
+          if ! git show pr/head:product.yaml > "$RUNNER_TEMP/product.yaml" 2>/dev/null; then
+            echo "no product.yaml on the PR head: skipped"; exit 0
+          fi
+          if ! git show "origin/$BASE:$SCRIPTS/manifest_check.py" > "$RUNNER_TEMP/manifest_check.py" 2>/dev/null; then
+            echo "::error::$SCRIPTS/manifest_check.py is not on $BASE: run scripts/adopt.sh and merge before requiring this check"; exit 2
+          fi
+          command -v python3 >/dev/null || { echo "::error::python3 is not on this runner"; exit 2; }
+          py=python3
+          if ! python3 -c 'import yaml' 2>/dev/null; then
+            # The runner has no PyYAML: install it into a job-local venv, never into the runner's Python.
+            python3 -m venv "$RUNNER_TEMP/manifest-venv" && "$RUNNER_TEMP/manifest-venv/bin/pip" install --quiet pyyaml \
+              || { echo "::error::PyYAML is not on this runner and could not be installed into a job venv"; exit 2; }
+            py="$RUNNER_TEMP/manifest-venv/bin/python"
+          fi
+          "$py" "$RUNNER_TEMP/manifest_check.py" "$RUNNER_TEMP/product.yaml"
+
+  cloudflare-cost:
+    name: Cloudflare config stays inside the US$5 plan
+    needs: resolve
+    if: needs.resolve.outputs.is_pr == 'true' && github.event_name != 'issue_comment'
+    runs-on: ${{ fromJSON(inputs.runs_on) }}
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          ref: main
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Check wrangler configs with the base branch's script and decisions
+        env:
+          BASE: ${{ inputs.base }}
+          PR: ${{ needs.resolve.outputs.number }}
+          SCRIPTS: ${{ inputs.scripts_dir }}
+        run: |
+          set -u
+          git fetch -q origin "$BASE" "+refs/pull/$PR/head:refs/remotes/pr/head"
+          if ! git show "origin/$BASE:$SCRIPTS/cf_cost_check.py" > "$RUNNER_TEMP/cf_cost_check.py" 2>/dev/null; then
+            # Adopting repos must not turn red before their refresh PR merges.
+            echo "::warning::$SCRIPTS/cf_cost_check.py is not on $BASE: skipped until the refresh PR merges"; exit 0
+          fi
+          command -v python3 >/dev/null || { echo "::error::python3 is not on this runner"; exit 2; }
+          if ! python3 -c 'import sys; __import__("tomllib" if sys.version_info >= (3, 11) else "tomli")' 2>/dev/null; then
+            echo "::error::Python 3.11+ or an importable tomli is required"; exit 2
+          fi
+          set --
+          if git show "origin/$BASE:docs/owner-decisions.md" > "$RUNNER_TEMP/owner-decisions.md" 2>/dev/null; then
+            set -- --decisions "$RUNNER_TEMP/owner-decisions.md"
+          fi
+          rc=0
+          python3 "$RUNNER_TEMP/cf_cost_check.py" --head pr/head --base "origin/$BASE" "$@" || rc=$?
+          exit "$rc"

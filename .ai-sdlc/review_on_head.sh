@@ -18,11 +18,12 @@
 # --auto-merge (scripts/auto_merge.sh) also asks the reviewer's word on the two things an
 # automatic merge must not skip. The latest review of this head must be an APPROVE that carries,
 # at column 0, exactly one `Stop:` line and it says `Stop: nothing`, and exactly one
-# `Expenditure:` line and it says `Expenditure: none`. The reviewer writes them after reading the
-# PR body and the ledger; a missing, repeated or other value holds the PR.
+# `Expenditure:` line matching EXPECT_EXPENDITURE: exactly `none` (the default) or `approved`.
+# Trailing spaces are allowed. The reviewer writes them after reading the PR body, the ledger
+# and any expenditure decision; a missing, repeated, mismatched or other value holds the PR.
 #
 #   exit 0  the latest review of this head is an APPROVE (with --auto-merge: one that says
-#           `Stop: nothing` and `Expenditure: none`)
+#           `Stop: nothing` and `Expenditure: <EXPECT_EXPENDITURE>`)
 #   exit 1  no review names this head, or the latest one is a REQUEST CHANGES or ambiguous, or
 #           (with --auto-merge) does not say both
 #   exit 2  the inputs are wrong or gh failed
@@ -40,6 +41,11 @@ while [ $# -gt 0 ]; do
     *) echo "$usage" >&2; exit 2 ;;
   esac
 done
+expect_expenditure=${EXPECT_EXPENDITURE-none}
+case "$expect_expenditure" in
+  none|approved) ;;
+  *) echo "REVIEW-ON-HEAD RECORD ERROR: EXPECT_EXPENDITURE must be exactly 'none' or 'approved'" >&2; exit 2 ;;
+esac
 case "$sha" in
   *[!0-9a-f]*|"") echo "REVIEW-ON-HEAD RECORD ERROR: head sha must be hex: '$sha'" >&2; exit 2 ;;
 esac
@@ -62,7 +68,7 @@ bodies=${bodies%x}
 # is a stray line, a verdict on top with no head under it included. A comment with a stray line holds
 # this head when it names this head, or names no head at all; one whose named heads are all other
 # heads is left alone. The latest well-formed review of this head decides otherwise.
-latest=$(printf '%s' "$bodies" | HEAD_SHA="$sha" awk 'BEGIN { RS = "\036"; FS = "\n" }
+latest=$(printf '%s' "$bodies" | HEAD_SHA="$sha" EXPECT_EXPENDITURE="$expect_expenditure" awk 'BEGIN { RS = "\036"; FS = "\n" }
   function clean_head(l) { sub(/^Reviewed head:[[:space:]]*`?/, "", l); sub(/`?[[:space:]]*$/, "", l); return l }
   {
     verdict = ""; head = ""; seen = 0; stray = 0; mentions = 0; other = 0
@@ -70,7 +76,13 @@ latest=$(printf '%s' "$bodies" | HEAD_SHA="$sha" awk 'BEGIN { RS = "\036"; FS = 
     for (i = 1; i <= NF; i++) {
       line = $i; sub(/\r$/, "", line)
       if (line ~ /^Stop:/) { stops++; if (line ~ /^Stop:[ \t]*nothing[ \t]*$/) stop_ok = 1 }
-      if (line ~ /^Expenditure:/) { spends++; if (line ~ /^Expenditure:[ \t]*none[ \t]*$/) spend_ok = 1 }
+      if (line ~ /^Expenditure:/) {
+        spends++
+        if (line ~ /^Expenditure:[ \t]*(none|approved)[ \t]*$/) {
+          value = line; sub(/^Expenditure:[ \t]*/, "", value); sub(/[ \t]*$/, "", value)
+          if (value == ENVIRON["EXPECT_EXPENDITURE"]) spend_ok = 1
+        }
+      }
       if (line ~ /^[[:space:]]*$/ && seen < 2) continue
       is_verdict = (line ~ /^(VERDICT:|\*\*Verdict:\*\*)[[:space:]]*(APPROVE|REQUEST CHANGES)[[:space:]]*$/)
       is_head = (line ~ /^Reviewed head:[[:space:]]*`?[0-9a-f]+`?[[:space:]]*$/)
@@ -106,7 +118,7 @@ latest=${latest%	*}
 case "$latest" in
   "APPROVE	"*)
     if [ "$auto" = 1 ] && [ "$attest" != attests ]; then
-      echo "REVIEW-ON-HEAD FAIL: the latest APPROVE of head ${latest#*	} does not say both 'Stop: nothing' and 'Expenditure: none' (one line each); it holds."
+      echo "REVIEW-ON-HEAD FAIL: the latest APPROVE of head ${latest#*	} does not say both 'Stop: nothing' and 'Expenditure: $expect_expenditure' (one line each); it holds."
       exit 1
     fi
     echo "REVIEW-ON-HEAD OK: the latest review of head ${latest#*	} is an APPROVE"; exit 0 ;;
