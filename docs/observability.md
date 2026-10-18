@@ -1,6 +1,6 @@
 # RTT server observability
 
-Server reporting and the authenticated uptime workflow are prepared. `baseline.observability` remains `missing` until live evidence below exists. No project, secret, service identity or monitor has been provisioned by this source change.
+Server reporting and the authenticated uptime workflow are prepared. `baseline.observability` remains `missing` until live evidence below exists. This source change provisions no external service. Operator evidence below records the Access setup separately; Sentry and live end-to-end checks remain pending.
 
 RTT reuses `eugnel-platform/telemetry`, pinned to commit `d50993325b0d094ea8b79d30dc75696ea387ec28`. The narrow `yaml:2.8.3` override fixes the shared package's CLI dependency advisory; the Worker does not import its YAML CLI. There is no browser Sentry SDK, new analytics binding, Cloudflare cron or paid monitoring service.
 
@@ -26,9 +26,9 @@ The package version is a declared version only. It does not prove which commit i
 
 ## Authenticated uptime
 
-The trusted default-branch workflow runs on the existing self-hosted runner every 30 minutes. It checks only `https://rtt.eugnel.com/` and `https://rtt.eugnel.com/api/healthz`, using a narrow Access service identity. Redirects are not followed; a 302/403 Access page is never application health. An unconfigured monitor is reported separately and opens no outage incident. Repeated failures use one incident, and an authenticated recovery closes it.
+The trusted default-branch workflow is disabled by default. Once deployed health checks pass, repository variable `RTT_UPTIME_ENABLED=true` enables the existing self-hosted runner every 30 minutes, including manual dispatches. An absent/false variable skips the job and prevents false outage issues before deployment. It checks only `https://rtt.eugnel.com/` and `https://rtt.eugnel.com/api/healthz`, using a narrow Access service identity. Redirects are not followed; a 302/403 Access page is never application health. An unconfigured monitor is reported separately and opens no outage incident. Repeated failures use one incident, and an authenticated recovery closes it.
 
-Secret names on the trusted monitor are `RTT_UPTIME_ACCESS_CLIENT_ID` and `RTT_UPTIME_ACCESS_CLIENT_SECRET`. Keep their values in the existing secure environment. Do not remove Access, exempt health routes, enable `workers.dev`/preview exposure or set `SKIP_ACCESS_CHECK=true` for monitoring.
+Existing repository secrets `CF_ACCESS_CLIENT_ID` and `CF_ACCESS_CLIENT_SECRET` are mapped by the workflow to script environment names `RTT_UPTIME_ACCESS_CLIENT_ID` and `RTT_UPTIME_ACCESS_CLIENT_SECRET`. Reuse those configured secrets; no new secret is required. Keep values in the existing secure environment. Do not remove Access, exempt health routes, enable `workers.dev`/preview exposure or set `SKIP_ACCESS_CHECK=true` for monitoring.
 
 ```sh
 node scripts/uptime.mjs
@@ -38,12 +38,14 @@ Exit 0 means both authenticated checks passed; exit 1 means unhealthy; exit 2 me
 
 ## Provision and verify
 
-James approved the existing free Sentry plan for `pgnetwork/rtt` and a free RTT uptime monitor on 18 October 2026. Use authorised account/configuration facilities, or the AI-SDLC Grok Bot handoff lane, for unavailable capabilities. The read-only Sentry skill cannot create a project. Webhook configuration is absent in this session, so no handoff has been dispatched.
+James approved the existing free Sentry plan for `pgnetwork/rtt` and a free RTT uptime monitor on 18 October 2026. Use authorised account/configuration facilities, or the AI-SDLC Grok Bot handoff lane, for unavailable capabilities. The read-only Sentry skill cannot create a project. No webhook handoff was dispatched by this source integration; the operator evidence below came through the authorised owner channel.
+
+Operator evidence received on 18 October 2026: Access identity `rtt-uptime` and a Service Auth policy at precedence 2 are configured; the human allow policy is unchanged. The two existing repository secrets are configured. An authenticated homepage request returned 200, while `/api/healthz` returned 404 because this code is not deployed. The monitor remains inactive. Sentry project creation returned 403 for the available member role and remains pending with James; it is not provisioned. No credentials are recorded here.
 
 1. Create or reuse Sentry project `rtt` in `pgnetwork` on the free plan; confirm region and normal data/IP scrubbing. Install its DSN directly as Worker secret `SENTRY_DSN` through normal configuration. Never copy it to a repository, chat, log or client variable.
-2. Configure a narrow Access service identity and the two monitor secrets on the existing trusted runner; preserve human policies. Configure any private platform dependency read access through existing secure Git transport, with no credentials in package URLs or lockfiles.
+2. Reuse the configured `rtt-uptime` Access identity/policy and existing `CF_ACCESS_CLIENT_ID`/`CF_ACCESS_CLIENT_SECRET` repository secrets. Preserve human policies and use the supported Git transport for the pinned private dependency, without credentials in package URLs or lockfiles.
 3. Deploy only when release enforcement permits. Trigger one controlled synthetic server failure, verify the private envelope's allow-list and a Sentry receipt with the actual deployment identity. Avoid real provider calls, customer content or production error loops.
-4. Run the authenticated monitor and record a successful run URL, version, timestamp and separately verified deployed identity.
+4. After the deployed `/api/healthz` returns its expected shared shape with authentication, set non-secret repository variable `RTT_UPTIME_ENABLED=true`. Run the authenticated monitor and record a successful run URL, version, timestamp and separately verified deployed identity.
 5. Verify existing **Cloudflare Workers Metrics > rtt > Requests**, the aggregate invocation count for script `rtt` in a named UTC window containing the synthetic health invocation. Record the window/count and invocation timestamp, not request logs. These are operational request counts, not implemented user analytics or feature events.
 6. Verify the shared support intake reads `sentry: {org: pgnetwork, project: rtt}` using its separate read-only `SENTRY_AUTH_TOKEN`. No alert webhook or new intake backend is required.
 
