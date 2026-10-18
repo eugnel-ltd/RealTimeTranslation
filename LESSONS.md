@@ -18,6 +18,12 @@ Entry format (newest first):
 
 ## Entries
 
+### Scan new fixtures before freezing regression tests
+- Cause: a long public synthetic response literal under a token field passed runtime tests but failed the trusted quoted-secret-assignment gate after the first-red file was frozen.
+- Fix: PR #1 replacement preserves the original published history, declares the same public fixture value under a plain response constant before the new first-red commit, and runs the trusted scan first.
+- Done right: scan the staged candidate tree with the trusted base scanner, as well as typechecking and linting, before locking test files; never encode fixtures or weaken the scanner.
+- Seen: 1× (2026-10-18)
+
 ### Verify the intended failure before freezing a regression
 - Cause: a legal-history UI test followed an undefined child back to its root. Its red run failed with a stack overflow, not the expected missing save-error message.
 - Fix: RTT #9 uses a fresh test-first branch, keeps the failed artifact, and adds only the missing null-child guard before locking the same assertions.
