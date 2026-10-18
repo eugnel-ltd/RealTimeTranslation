@@ -40,3 +40,9 @@
 ## Divergences
 
 - None.
+
+## Evidence
+
+- Read the actual RTT case and enforcement module from the local AI-SDLC checkout at `b217812`; the case added in ai-sdlc #192 is present. The case runs installs/tests/build and omits typecheck, lint and desktop tests.
+- The single 30-second vendor implementation attempt exited 1 after timeout; the remaining lane was unavailable and left no changes. The direct fallback wrote the correction.
+- A fresh client audit on 18 October 2026 still reports five high development-only findings from GHSA-vfj7-8cjw-p6xm. Registry `braces` latest remains 3.0.3. Existing issue searches found no dedicated follow-up; [#32](https://github.com/eugnel-ltd/RealTimeTranslation/issues/32) now records the accepted limit and nonvisual remediation acceptance. No dependencies, CSS or audit ignores changed.

@@ -37,7 +37,7 @@ Do not review:
 
 - generated files and lockfiles: `client/dist/`, `package-lock.json`, `client/package-lock.json`.
 
-No CI runs `npm test` or the build yet; the reviewer checks that the PR reports both.
+AI-SDLC `scripts/repo_ci.sh` has an RTT cloud CI case that runs `npm test` and the build. The reviewer checks that the report names the current head and that the PR supplies relevant typecheck, lint and Python desktop results, which the current case omits. See `docs/code-standards.md` for coverage and `docs/autonomy-ledger.md` for the separate release enforcement status.
 
 ## Doc-only fast lane
 
