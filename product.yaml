@@ -11,6 +11,7 @@ name: Real-Time Translation
 status: building             # live for the owner only, behind Cloudflare Access (DEPLOY.md)
 repo: eugnel-ltd/RealTimeTranslation
 north_star: docs/north-star.md
+support: rtt@eugnel.uk
 
 channels:
   web:
