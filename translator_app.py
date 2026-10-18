@@ -6,6 +6,7 @@ from dotenv import load_dotenv
 import azure.cognitiveservices.speech as speechsdk
 import threading
 import queue
+import tempfile
 
 # Load environment variables
 load_dotenv()
@@ -55,39 +56,66 @@ class TranslatorApp:
         self.root.protocol("WM_DELETE_WINDOW", self.on_closing)
         self._event_timer = self.root.after(50, self._drain_events)
         
-    def load_settings(self):
-        # Default settings if no file found
-        default_settings = {
+    def _set_language_settings(self, data):
+        defaults = {
             "input_language": "en-US",
             "output_language": "yue",
             "second_output_language": ""
         }
-        
-        if os.path.exists(SETTINGS_FILE):
-            try:
-                with open(SETTINGS_FILE, "r", encoding="utf-8") as f:
-                    data = json.load(f)
-                self.input_language = data.get("input_language", default_settings["input_language"])
-                self.output_language = data.get("output_language", default_settings["output_language"])
-                self.second_output_language = data.get("second_output_language", default_settings["second_output_language"])
-            except:
-                self.input_language = default_settings["input_language"]
-                self.output_language = default_settings["output_language"]
-                self.second_output_language = default_settings["second_output_language"]
-        else:
-            self.input_language = default_settings["input_language"]
-            self.output_language = default_settings["output_language"]
-            self.second_output_language = default_settings["second_output_language"]
-        
+        if not isinstance(data, dict):
+            data = {}
+        settings = {}
+        for field, default in defaults.items():
+            value = data.get(field)
+            value = value.strip() if isinstance(value, str) else default
+            if not value and default:
+                value = default
+            settings[field] = value
+            setattr(self, field, value)
+        return settings
+
+    def load_settings(self):
+        try:
+            with open(SETTINGS_FILE, "r", encoding="utf-8") as stream:
+                data = json.load(stream)
+        except (OSError, ValueError):
+            data = {}
+        self._set_language_settings(data)
+
     def save_settings(self):
-        data = {
+        # Choices remain usable even if this machine cannot persist them.
+        data = self._set_language_settings({
             "input_language": self.input_language,
             "output_language": self.output_language,
             "second_output_language": self.second_output_language
-        }
-        with open(SETTINGS_FILE, "w", encoding="utf-8") as f:
-            json.dump(data, f, ensure_ascii=False, indent=4)
-        
+        })
+        temporary = None
+        try:
+            destination = os.path.abspath(SETTINGS_FILE)
+            with tempfile.NamedTemporaryFile(
+                mode="w", encoding="utf-8", dir=os.path.dirname(destination),
+                prefix=f".{os.path.basename(destination)}.", suffix=".tmp", delete=False
+            ) as stream:
+                temporary = stream.name
+                json.dump(data, stream, ensure_ascii=False, indent=4)
+                stream.flush()
+                os.fsync(stream.fileno())
+            os.replace(temporary, destination)
+            temporary = None
+            return True
+        except (OSError, ValueError, TypeError) as error:
+            self.update_display(
+                f"Error saving settings: {error}. Changes remain active for this session.\n",
+                "error"
+            )
+            return False
+        finally:
+            if temporary is not None:
+                try:
+                    os.unlink(temporary)
+                except OSError:
+                    pass
+
     def create_main_ui(self):
         # Style configuration for ttk
         style = ttk.Style(self.root)
