@@ -3,12 +3,12 @@
 - Intent: #5, continuing the merged local PR checks from #39.
 - Spec: `docs/specs/5-web-release.md`.
 - Task type and level: infra-pipeline at level 2; Stop: merge. Release level 3 acts only after genuine enforcement-green evidence and the independent baseline gate.
-- Accepted by: pending root independent plan review; no source implementation before acceptance.
+- Accepted by: root independent plan review of f020c33, 18 October 2026, before implementation.
 - Vendor: research lane failure already recorded in #39; root authorised direct continuation without another vendor wait.
 
 ## Files that change
 
-- `scripts/pr-evidence.py`: local trusted-comment adapter around unchanged adopted review, head-check and release-evidence helpers. Strict API shape/input validation, per-PR trusted comment files, no inherited comment override.
+- `scripts/pr_evidence.py`: local trusted-comment adapter around unchanged adopted review, head-check and release-evidence helpers. Strict API shape/input validation, per-PR trusted comment files, no inherited comment override.
 - `scripts/auto-merge.py`: same-repository/main, expenditure, latest exact-head approval with Stop:nothing, all required checks or trusted cloud fallback; pinned squash merge; explicit `web-release-check.yml` dispatch after any merge, including before reporting a later error.
 - `scripts/web-release.py`: clean exact-main preflight, release level/enforcement gate, full first-parent green-ledger evidence walk, unchanged publishing-web baseline gate; explicit cloud apply builds/dry-runs/deploys the exact SHA, verifies authenticated health and rolls back failed health to the captured prior version.
 - `.github/workflows/auto-merge.yml`: default-branch workflow_run, trusted comment event, schedule and dispatch entrypoints, existing self-hosted/ai-sdlc runner, no PR checkout/execution.
@@ -44,4 +44,6 @@
 
 ## Divergences
 
-- None.
+- 18 October 2026: use Python's importable `pr_evidence.py` filename for the shared adapter; behaviour and scope are unchanged.
+- 18 October 2026: root approved a fixture-only rebaseline before the replacement first-red commit. The fake provider originally kept returning the newly deployed version after a successful rollback. Only that fake state transition changed; all cases/assertions are unchanged. Original red 2cbe9cf and implementation WIP ccd82a1 remain on `config/5-web-release-original-red`. The replacement branch starts at the accepted plan, repeats old-source red/typecheck, then reapplies the source separately. Production rollback receipt verification is retained.
+- 18 October 2026: root approved a second mechanical fixture rebaseline for the independently discovered rollback-ownership P1. The CLI fake now persists real deploy tag/message arguments and returns version.id plus workers/tag and workers/message on the supported version-view read. Prior 1838074/4c36ed7 frozen tests and source7b8cd7e remain on `config/5-web-release-pre-ownership`; no behaviour case is removed. Replacement source is applied only after these provider fixtures are frozen and the real old behaviours reproduced.
