@@ -9,6 +9,8 @@ Both applications provide real-time speech translation capabilities but are comp
 
 The web app deploys as a single Cloudflare Worker (`rtt`, custom domain `rtt.eugnel.com`). See [DEPLOY.md](DEPLOY.md) for secrets, vars, and smoke tests. API keys must not be placed in `VITE_*` client env vars.
 
+The [legal preparation runbook](docs/legal/README.md) links the source-backed data inventory and current policy gaps. These are internal preparation documents; the legal baseline remains open.
+
 ## Features
 
 ### Common Features
