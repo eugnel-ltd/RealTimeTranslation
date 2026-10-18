@@ -12,6 +12,7 @@ import { handleHealth, reportServerFailure } from './observability';
 import { AccountRequestError } from './accountErrors';
 import { ACCOUNT_ERASER_PATH, handleAccountErasure, resolveAccountContext, type AccountContext } from './accounts';
 import { handleAccountGetProfile, handleAccountListProfiles, handleAccountPutProfile } from './accountProfiles';
+import { handleAccountAuth, isAccountAuthPath } from './accountAuth';
 
 const PAID_API_PATHS = new Set([
   '/api/speech-token',
@@ -36,6 +37,7 @@ export default {
         if (denied) return denied;
         const limited = await checkRateLimits(request, env, url.pathname);
         if (limited) return finish(limited);
+        if (isAccountAuthPath(url.pathname)) return finish(await handleAccountAuth(request, env));
         const guarded = PAID_API_PATHS.has(url.pathname) || url.pathname === '/api/profiles' || url.pathname.startsWith('/api/profiles/');
         const account = guarded ? await resolveAccountContext(request, env) : undefined;
         return finish(await routeApi(request, env, url, ctx, account));
