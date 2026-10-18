@@ -451,6 +451,16 @@ const App: React.FC = () => {
     }
   }, []);
 
+  useEffect(() => () => {
+    ++answerGenerationRef.current;
+    detector.cancel?.();
+    clearSilenceTimer();
+    const abort = answerAbortRef.current;
+    answerAbortRef.current = null;
+    answeringRef.current = false;
+    abort?.abort();
+  }, [detector, clearSilenceTimer]);
+
   const fireAutoAnswer = useCallback(
     (hintFromHit: string, replace = false) => {
       if (!aiAnswerPanelRef.current) return;
