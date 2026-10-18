@@ -56,11 +56,13 @@ function sessionValue(value: unknown): VerifiedAccount {
   return Object.freeze({ accountId: value.accountId, authenticatedAt: value.authenticatedAt, expiresAt: value.expiresAt });
 }
 
+const accountExpectation = (accountId: string) => `account:${encodeURIComponent(accountId)}`;
+
 export function captureExpectedAccount(request: Request, allowQuery: boolean): string | undefined {
   const url = new URL(request.url);
   const header = request.headers.get('Eugnel-Expected-Account');
   const query = url.searchParams.getAll('expectedAccount');
-  const invalid = () => { throw new AccountRequestError(400, 'Invalid expected account'); };
+  const invalid = (): never => { throw new AccountRequestError(400, 'Invalid expected account'); };
   if (query.length > 1 || query.length && (!allowQuery || header !== null)) invalid();
   if (query.length) {
     try { decodeURIComponent(url.search); } catch { invalid(); }
@@ -68,8 +70,11 @@ export function captureExpectedAccount(request: Request, allowQuery: boolean): s
   const value = header ?? query[0];
   if (value === undefined) return undefined;
   if (value === 'signed-out') return value;
-  if (!value.startsWith('account:') || !validAccountId(value.slice(8)) || value.includes(',')) invalid();
-  return value;
+  if (value.length > 1544 || !value.startsWith('account:') || value.includes(',')) invalid();
+  let accountId: string;
+  try { accountId = decodeURIComponent(value.slice(8)); } catch { return invalid(); }
+  if (!validAccountId(accountId)) invalid();
+  return accountExpectation(accountId);
 }
 
 export async function resolveAccountContext(request: Request, env: WorkerEnv): Promise<AccountContext> {
@@ -91,7 +96,7 @@ export async function resolveAccountContext(request: Request, env: WorkerEnv): P
     const payload: unknown = await response.json();
     if (!isJsonObject(payload) || !sameScope(payload.scope, scope)) throw new AccountRequestError(503);
     const session = sessionValue(payload.session);
-    if (expectation !== undefined && expectation !== `account:${session.accountId}`) throw new AccountRequestError(401, 'ACCOUNT_CHANGED');
+    if (expectation !== undefined && expectation !== accountExpectation(session.accountId)) throw new AccountRequestError(401, 'ACCOUNT_CHANGED');
     const profiles = createAccountProfiles(db, session.accountId);
     await profiles.assertActive();
     return Object.freeze({ mode: 'customer', scope, session, profiles });
