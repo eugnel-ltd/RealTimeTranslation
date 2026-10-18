@@ -2,6 +2,10 @@ import type { SessionTemplateId } from '../../shared/sessionTemplates';
 import type { HotkeyMap } from './hotkeys';
 
 export interface TranscriptEntry {
+  id: string;
+  sessionId: string;
+  sessionTimestamp: string;
+  targetLanguages: string[];
   original: string;
   translations: string[];
   isFinal: boolean;

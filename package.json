@@ -12,7 +12,9 @@
     "test": "vitest run",
     "smoke": "node scripts/smoke.mjs",
     "replay": "node scripts/replay-transcript.mjs",
-    "deploy:dry": "npm run build && wrangler deploy --dry-run"
+    "deploy:dry": "npm run build && wrangler deploy --dry-run",
+    "typecheck": "tsc --noEmit && tsc -p tests/tsconfig.json && npm --prefix client run typecheck",
+    "lint": "npm --prefix client run lint"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "latest",
