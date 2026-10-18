@@ -289,13 +289,13 @@ describe('answer', () => {
     expect(await readEvents(invalid)).toContainEqual({ event: 'usage', data: { thoughtsTokenCount: 0 } });
   });
 
-  it.each([429, 400, 503])('maps upstream HTTP %s and logs at most 400 body characters', async (status) => {
+  it.each([429, 400, 503])('maps upstream HTTP %s and logs status without provider content', async (status) => {
     const logger = vi.spyOn(console, 'error').mockImplementation(() => undefined);
     try {
       const res = await handleAnswer(post({ question: 'Hello?' }), env(), mockFetch(() => textResponse('x'.repeat(1000), status)));
       expect(res.status).toBe(status === 429 ? 429 : 502);
       expect(await res.json()).toEqual(status === 429 ? { error: 'Gemini free-tier quota reached' } : { error: 'Gemini answer request failed', status });
-      expect(JSON.parse(logger.mock.calls[0][0])).toEqual({ message: 'gemini answer request failed', status, body: 'x'.repeat(400) });
+      expect(JSON.parse(logger.mock.calls[0][0])).toEqual({ message: 'gemini answer request failed', status });
     } finally { logger.mockRestore(); }
   });
 
