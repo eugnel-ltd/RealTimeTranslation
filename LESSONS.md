@@ -17,3 +17,15 @@ Entry format (newest first):
 ```
 
 ## Entries
+
+### Resume a completed worker with followup_task
+- Cause: sending a message to a completed worker did not start a new turn, delaying API verification.
+- Fix: issue #13 delivery coordination.
+- Done right: use `followup_task` for completed workers; use `send_message` only while the worker is running.
+- Seen: 1× (2026-10-18)
+
+### Keep failure callbacks owned by the operation that failed
+- Cause: a scheduled Gemini recycle rejected after its microphone wait completed; its unguarded catch reported an old error into a newer live session.
+- Fix: issue #13; the recycle catch checks the failed start's disposal generation and that no replacement session is active.
+- Done right: test both a failed recycle superseded by a successful start and a current recycle failure that still reports once.
+- Seen: 1× (2026-10-18)

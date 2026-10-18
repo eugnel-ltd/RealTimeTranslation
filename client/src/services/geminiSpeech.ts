@@ -8,8 +8,18 @@ type SpeechCallbacks = {
   onRecognized: (original: string, translations: string[], detectedLanguage?: string) => void;
   onError: (error: string) => void;
 };
-
 type GeminiMode = 'transcribe' | 'translate';
+type Session = { id: number; config: TranslationConfig; mode: GeminiMode; started: boolean; failure?: Error; translationAbort?: AbortController };
+type GeminiMessage = {
+  setupComplete?: unknown;
+  serverContent?: {
+    interimInputTranscription?: { text?: string; languageCode?: string };
+    inputTranscription?: { text?: string; languageCode?: string };
+    outputTranscription?: { text?: string; languageCode?: string };
+  };
+};
+const SETUP_TIMEOUT_MS = 15_000;
+const TRANSLATION_TIMEOUT_MS = 15_000;
 
 export class GeminiSpeechService {
   private ws: WebSocket | null = null;
@@ -17,240 +27,242 @@ export class GeminiSpeechService {
   private processor: ScriptProcessorNode | null = null;
   private source: MediaStreamAudioSourceNode | null = null;
   private mediaStream: MediaStream | null = null;
-  private running = false;
   private session = 0;
-  private config: TranslationConfig | null = null;
-  private mode: GeminiMode = 'transcribe';
+  private active: Session | null = null;
   private interimInput = '';
   private interimOutput = '';
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  private cancelSocketStart: (() => void) | null = null;
 
   constructor(private readonly callbacks: SpeechCallbacks) {}
 
-  async start(config: TranslationConfig, mode: GeminiMode) {
+  async start(config: TranslationConfig, mode: GeminiMode): Promise<void> {
     const stopping = this.stop();
-    const session = this.session;
+    const id = this.session;
     await stopping;
-    if (session !== this.session) return;
-    this.config = config;
-    this.mode = mode;
-    this.running = true;
-    await this.openSession(session);
-  }
-
-  private async openSession(session: number) {
-    if (!this.config || !this.running || session !== this.session) return;
-    const token = await this.mintToken();
-    if (session !== this.session) return;
-    await this.openSocket(token, session);
-    if (session !== this.session) return;
-    await this.startMic(session);
-    if (session !== this.session) return;
-    this.scheduleReconnect();
-  }
-
-  private async mintToken(): Promise<GeminiToken> {
+    if (id !== this.session) return;
+    const session: Session = { id, config: { ...config }, mode, started: false };
+    this.active = session;
     try {
-      return await fetchGeminiToken(this.mode, this.config?.outputLanguage);
-    } catch (err) {
-      console.warn('Gemini ephemeral token failed, using Worker proxy', err);
-      const target = this.config?.outputLanguage
-        ? `&target=${encodeURIComponent(this.config.outputLanguage)}`
-        : '';
-      return {
-        token: '',
-        expireTime: '',
-        model: '',
-        mode: this.mode,
-        wsUrl: '',
-        proxyUrl: `/api/gemini-live?mode=${this.mode}${target}`,
-      };
+      const token = await this.mintToken(session);
+      if (!this.current(session)) return;
+      await this.openSocket(token, session);
+      if (session.failure) throw session.failure;
+      if (!this.current(session)) return;
+      await this.startMic(session);
+      if (session.failure) throw session.failure;
+      if (!this.current(session)) return;
+      session.started = true;
+      this.reconnectTimer = setTimeout(() => {
+        if (!this.current(session)) return;
+        const restarting = this.start(session.config, session.mode);
+        const restartGeneration = this.session;
+        void restarting.catch((error: unknown) => {
+          // A failed start disposes its generation once. A later start/stop owns any further generation.
+          if (this.active || this.session !== restartGeneration + 1) return;
+          this.callbacks.onError(error instanceof Error ? error.message : 'Gemini reconnect failed');
+        });
+      }, 8 * 60 * 1000);
+    } catch (error) {
+      const current = this.current(session);
+      if (current) await this.stop();
+      if (current || session.failure) throw error;
     }
   }
 
-  private openSocket(token: GeminiToken, session: number): Promise<void> {
-    const url = token.wsUrl || toWsUrl(token.proxyUrl);
+  private current(session: Session): boolean {
+    return this.active === session && session.id === this.session;
+  }
+
+  private async mintToken(session: Session): Promise<GeminiToken> {
+    const { config, mode } = session;
+    try {
+      return await fetchGeminiToken(mode, config.outputLanguage);
+    } catch {
+      const target = config.outputLanguage ? `&target=${encodeURIComponent(config.outputLanguage)}` : '';
+      return { token: '', expireTime: '', model: '', mode, wsUrl: '', proxyUrl: `/api/gemini-live?mode=${mode}${target}` };
+    }
+  }
+
+  private openSocket(token: GeminiToken, session: Session): Promise<void> {
     return new Promise((resolve, reject) => {
-      const ws = new WebSocket(url);
+      const ws = new WebSocket(token.wsUrl || toWsUrl(token.proxyUrl));
       this.ws = ws;
-      let opened = false;
-      ws.onopen = () => {
-        if (session !== this.session) {
-          ws.close();
-          resolve();
+      let acknowledged = false;
+      let settled = false;
+      let messages = Promise.resolve();
+      const finish = (error?: Error) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timeout);
+        if (this.cancelSocketStart === cancel) this.cancelSocketStart = null;
+        if (error) reject(error);
+        else resolve();
+      };
+      const cancel = () => finish();
+      this.cancelSocketStart = cancel;
+      const fail = (error: Error) => {
+        if (!this.current(session) || session.failure) return;
+        session.failure = error;
+        if (!acknowledged) {
+          finish(error);
           return;
         }
-        opened = true;
-        ws.send(JSON.stringify({ setup: this.setupMessage() }));
-        resolve();
+        // During microphone acquisition the start promise carries the error.
+        const report = session.started;
+        void this.stop();
+        if (report) this.callbacks.onError(error.message);
       };
-      ws.onerror = () => {
-        if (session !== this.session) resolve();
-        else if (!opened) reject(new Error('Gemini Live WebSocket failed'));
-      };
-      ws.onclose = (event) => {
-        if (session !== this.session) { resolve(); return; }
-        if (!opened) reject(new Error('Gemini Live WebSocket closed before opening'));
-        if (this.running) {
-          const detail = event.reason ? `${event.code}: ${event.reason}` : String(event.code);
-          this.callbacks.onError(`Gemini Live connection closed (${detail})`);
+      const timeout = setTimeout(() => fail(new Error('Gemini Live setup acknowledgement timed out')), SETUP_TIMEOUT_MS);
+      ws.onopen = () => {
+        if (!this.current(session)) return;
+        const model = token.model || (session.mode === 'translate' ? 'gemini-3.5-live-translate-preview' : 'gemini-3.5-transcribe-live');
+        try {
+          ws.send(JSON.stringify({ setup: geminiLiveSetup(session.mode, model, session.config.outputLanguage || 'en') }));
+        } catch (error) {
+          fail(error instanceof Error ? error : new Error('Gemini Live setup failed'));
         }
       };
+      ws.onerror = () => fail(new Error('Gemini Live WebSocket failed'));
+      ws.onclose = (event) => {
+        const detail = event.reason ? `${event.code}: ${event.reason}` : String(event.code);
+        fail(new Error(`Gemini Live connection closed (${detail})`));
+      };
       ws.onmessage = (event) => {
-        void this.handleMessage(event.data);
+        messages = messages.then(async () => {
+          if (!this.current(session)) return;
+          let message: GeminiMessage;
+          try {
+            const parsed: unknown = JSON.parse(await decodeWsData(event.data));
+            if (!parsed || typeof parsed !== 'object') return;
+            message = parsed as GeminiMessage;
+          } catch { return; }
+          if (!this.current(session)) return;
+          if (message.setupComplete != null) {
+            acknowledged = true;
+            finish();
+            return;
+          }
+          if (acknowledged) await this.handleMessage(message, session);
+        }).catch((error: unknown) => fail(error instanceof Error ? error : new Error('Gemini Live message failed')));
       };
     });
   }
 
-  private setupMessage(): Record<string, unknown> {
-    if (this.mode === 'translate') {
-      return geminiLiveSetup(
-        'translate',
-        'gemini-3.5-live-translate-preview',
-        this.config?.outputLanguage || 'en',
-      );
-    }
-    return geminiLiveSetup('transcribe', 'gemini-3.5-transcribe-live');
-  }
-
-  private async startMic(session: number) {
+  private async startMic(session: Session): Promise<void> {
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    if (session !== this.session) {
+    if (!this.current(session)) {
       stream.getTracks().forEach((track) => track.stop());
       return;
     }
     this.mediaStream = stream;
-    this.audioContext = new AudioContext();
-    this.source = this.audioContext.createMediaStreamSource(this.mediaStream);
-    this.processor = this.audioContext.createScriptProcessor(4096, 1, 1);
-    this.processor.onaudioprocess = (event) => {
-      if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
+    const audioContext = new AudioContext();
+    this.audioContext = audioContext;
+    if (typeof audioContext.resume === 'function') await audioContext.resume();
+    if (!this.current(session)) return;
+    const source = audioContext.createMediaStreamSource(stream);
+    this.source = source;
+    const processor = audioContext.createScriptProcessor(4096, 1, 1);
+    this.processor = processor;
+    const ws = this.ws;
+    processor.onaudioprocess = (event) => {
+      if (!this.current(session) || !ws || ws.readyState !== WebSocket.OPEN) return;
       const input = event.inputBuffer.getChannelData(0);
-      const resampled = resample(input, this.audioContext?.sampleRate ?? 48000, 16000);
-      const pcm = floatTo16BitPcm(resampled);
-      this.ws.send(
-        JSON.stringify({
-          realtimeInput: {
-            audio: { data: arrayBufferToBase64(pcm), mimeType: 'audio/pcm;rate=16000' },
-          },
-        }),
-      );
-    };
-    this.source.connect(this.processor);
-    this.processor.connect(this.audioContext.destination);
-  }
-
-  private async handleMessage(raw: unknown) {
-    const text = await decodeWsData(raw);
-    let msg: {
-      serverContent?: {
-        interimInputTranscription?: { text?: string; languageCode?: string };
-        inputTranscription?: { text?: string; languageCode?: string };
-        outputTranscription?: { text?: string; languageCode?: string };
-        generationComplete?: boolean;
-      };
-    };
-    try {
-      msg = JSON.parse(text) as typeof msg;
-    } catch {
-      return;
-    }
-    const content = msg.serverContent;
-    if (!content) return;
-
-    if (content.interimInputTranscription?.text) {
-      this.interimInput = content.interimInputTranscription.text;
-      this.callbacks.onRecognizing(this.interimInput, this.mode === 'translate' ? [this.interimOutput] : [], content.interimInputTranscription.languageCode);
-    }
-    if (this.mode === 'translate' && content.outputTranscription?.text) {
-      this.interimOutput = content.outputTranscription.text;
-      this.callbacks.onRecognizing(this.interimInput || this.interimOutput, [this.interimOutput], content.outputTranscription.languageCode);
-    }
-    if (content.inputTranscription?.text) {
-      const original = content.inputTranscription.text.trim();
-      if (!original) return;
-      const detected = content.inputTranscription.languageCode;
-      if (this.mode === 'translate') {
-        const primary = (content.outputTranscription?.text || this.interimOutput || '').trim();
-        const translations = await this.fillTranslations(original, primary ? [primary] : []);
-        this.callbacks.onRecognized(original, translations, detected);
-      } else {
-        const translations = await this.fillTranslations(original, []);
-        this.callbacks.onRecognized(original, translations, detected);
-      }
-      this.interimInput = '';
-      this.interimOutput = '';
-    }
-  }
-
-  private async fillTranslations(original: string, seed: string[]): Promise<string[]> {
-    const targets = [this.config?.outputLanguage, this.config?.secondOutputLanguage].filter(
-      (x): x is string => Boolean(x),
-    );
-    if (targets.length === 0) return seed;
-    if (seed.length >= targets.length) return seed.slice(0, targets.length);
-    try {
-      const { translations } = await translateText(original, targets, this.config?.inputLanguage);
-      if (seed[0] && translations.length) {
-        translations[0] = seed[0];
-      }
-      return translations;
-    } catch (err) {
-      console.error('translate failed', err);
-      return seed.length ? seed : targets.map(() => '');
-    }
-  }
-
-  private scheduleReconnect() {
-    if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
-    this.reconnectTimer = setTimeout(() => {
-      if (!this.running) return;
-      void this.recycle();
-    }, 8 * 60 * 1000);
-  }
-
-  private async recycle() {
-    const session = this.session;
-    this.teardownSocketAndMic();
-    try {
-      await this.openSession(session);
-    } catch (err) {
-      if (session === this.session) this.callbacks.onError(err instanceof Error ? err.message : 'Gemini reconnect failed');
-    }
-  }
-
-  async stop() {
-    ++this.session;
-    this.running = false;
-    if (this.reconnectTimer) {
-      clearTimeout(this.reconnectTimer);
-      this.reconnectTimer = null;
-    }
-    if (this.ws?.readyState === WebSocket.OPEN) {
+      const pcm = floatTo16BitPcm(resample(input, audioContext.sampleRate, 16000));
       try {
-        this.ws.send(JSON.stringify({ realtimeInput: { audioStreamEnd: true } }));
-      } catch {
-        /* ignore */
-      }
-    }
-    this.teardownSocketAndMic();
+        ws.send(JSON.stringify({ realtimeInput: { audio: { data: arrayBufferToBase64(pcm), mimeType: 'audio/pcm;rate=16000' } } }));
+      } catch { /* The socket error/close handler reports connection failure. */ }
+    };
+    source.connect(processor);
+    processor.connect(audioContext.destination);
   }
 
-  private teardownSocketAndMic() {
-    this.processor?.disconnect();
-    this.source?.disconnect();
-    this.mediaStream?.getTracks().forEach((t) => t.stop());
-    void this.audioContext?.close();
+  private async handleMessage(message: GeminiMessage, session: Session): Promise<void> {
+    const content = message.serverContent;
+    if (!content) return;
+    const interim = content.interimInputTranscription;
+    if (typeof interim?.text === 'string' && interim.text) {
+      this.interimInput = interim.text;
+      this.callbacks.onRecognizing(this.interimInput, session.mode === 'translate' ? [this.interimOutput] : [], interim.languageCode);
+    }
+    const output = content.outputTranscription;
+    if (!this.current(session)) return;
+    if (session.mode === 'translate' && typeof output?.text === 'string' && output.text) {
+      this.interimOutput = output.text;
+      this.callbacks.onRecognizing(this.interimInput || this.interimOutput, [this.interimOutput], output.languageCode);
+    }
+    const input = content.inputTranscription;
+    if (typeof input?.text !== 'string' || !input.text.trim() || !this.current(session)) return;
+    const original = input.text.trim();
+    const primary = session.mode === 'translate' ? this.interimOutput.trim() : '';
+    const translations = await this.fillTranslations(original, primary ? [primary] : [], session);
+    if (!this.current(session)) return;
+    this.callbacks.onRecognized(original, translations, input.languageCode);
+    this.interimInput = '';
+    this.interimOutput = '';
+  }
+
+  private async fillTranslations(original: string, seed: string[], session: Session): Promise<string[]> {
+    const { config } = session;
+    const targets = [config.outputLanguage, config.secondOutputLanguage].filter((target): target is string => Boolean(target));
+    if (seed.length >= targets.length) return seed.slice(0, targets.length);
+    const abort = new AbortController();
+    session.translationAbort = abort;
+    let rejectCancelled!: () => void;
+    const cancelled = new Promise<never>((_, reject) => {
+      rejectCancelled = () => reject(new Error('Translation cancelled or timed out'));
+      abort.signal.addEventListener('abort', rejectCancelled, { once: true });
+    });
+    const timeout = setTimeout(() => abort.abort(), TRANSLATION_TIMEOUT_MS);
+    try {
+      const { translations } = await Promise.race([
+        translateText(original, targets, config.inputLanguage, abort.signal),
+        cancelled,
+      ]);
+      if (seed[0] && translations.length) translations[0] = seed[0];
+      return translations;
+    } catch {
+      // Preserve the original utterance even when text translation is unavailable.
+      return targets.map((_, index) => seed[index] ?? '');
+    } finally {
+      clearTimeout(timeout);
+      abort.signal.removeEventListener('abort', rejectCancelled);
+      if (session.translationAbort === abort) session.translationAbort = undefined;
+    }
+  }
+
+  async stop(): Promise<void> {
+    ++this.session;
+    this.active?.translationAbort?.abort();
+    this.active = null;
+    this.cancelSocketStart?.();
+    if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
+    this.reconnectTimer = null;
+    this.interimInput = '';
+    this.interimOutput = '';
+    const { ws, processor, source, mediaStream, audioContext } = this;
+    this.ws = null;
     this.processor = null;
     this.source = null;
     this.mediaStream = null;
     this.audioContext = null;
-    try {
-      this.ws?.close();
-    } catch {
-      /* ignore */
+    if (ws) {
+      ws.onopen = null;
+      ws.onclose = null;
+      ws.onerror = null;
+      ws.onmessage = null;
+      try {
+        if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ realtimeInput: { audioStreamEnd: true } }));
+      } catch { /* Continue releasing the microphone. */ }
+      try { ws.close(); } catch { /* Already closed. */ }
     }
-    this.ws = null;
+    if (processor) processor.onaudioprocess = null;
+    try { processor?.disconnect(); } catch { /* Continue cleanup. */ }
+    try { source?.disconnect(); } catch { /* Continue cleanup. */ }
+    for (const track of mediaStream?.getTracks() ?? []) {
+      try { track.stop(); } catch { /* Continue cleanup. */ }
+    }
+    try { await audioContext?.close(); } catch { /* Already closed. */ }
   }
 }
 
@@ -263,5 +275,6 @@ async function decodeWsData(raw: unknown): Promise<string> {
   if (typeof raw === 'string') return raw;
   if (raw instanceof Blob) return raw.text();
   if (raw instanceof ArrayBuffer) return new TextDecoder().decode(raw);
+  if (ArrayBuffer.isView(raw)) return new TextDecoder().decode(raw);
   return String(raw);
 }
