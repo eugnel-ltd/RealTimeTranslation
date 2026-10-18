@@ -18,6 +18,12 @@ Entry format (newest first):
 
 ## Entries
 
+### Verify the intended failure before freezing a regression
+- Cause: a legal-history UI test followed an undefined child back to its root. Its red run failed with a stack overflow, not the expected missing save-error message.
+- Fix: RTT #9 uses a fresh test-first branch, keeps the failed artifact, and adds only the missing null-child guard before locking the same assertions.
+- Done right: read the full red failure, confirm the assertion names the target behaviour, and check the harness before the test commit. A nonzero exit alone is not proof.
+- Seen: 1× (2026-10-18)
+
 ### Verify automation ownership before managing issues
 - Cause: uptime incident matching trusted a public title and marker, allowing a human issue to suppress an outage incident and be closed on recovery.
 - Fix: issue #35 requires the expected GitHub Actions login and Bot type before deduplication, comments or closure.

@@ -1,0 +1,21 @@
+# Authoritative company legal facts. Consumer contract: company/README.md.
+name: EUGNEL LTD
+number: "17505169"
+registered_office: "122 New Road, Ascot, Berkshire, SL5 8QH"
+country: England and Wales
+
+# The application reference below is not an ICO registration number.
+ico_registration: null
+ico:
+  status: pending
+  application_reference: C2062045
+  expected_from: "2026-10-19"  # Owner expectation only; never an automatic status change.
+
+# Owner-confirmed privacy contact, 18 October 2026; see company/decisions.md.
+privacy_email: hello@eugnel.com
+
+source:
+  kind: owner_decision
+  owner: James
+  date: "2026-10-18"
+  record: company/decisions.md#2026-10-18-company-legal-facts-have-one-authoritative-record

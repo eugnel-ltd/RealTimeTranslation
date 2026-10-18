@@ -43,6 +43,7 @@ const Settings: React.FC<SettingsProps> = ({ isOpen, onClose, initialSettings, o
   const [editorMarkdown, setEditorMarkdown] = useState('');
   const [editorDirty, setEditorDirty] = useState(false);
   const [profileNote, setProfileNote] = useState('');
+  const [saveError, setSaveError] = useState('');
   const fileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -90,12 +91,13 @@ const Settings: React.FC<SettingsProps> = ({ isOpen, onClose, initialSettings, o
   };
 
   const handleSave = async () => {
+    setSaveError('');
     try {
       if (draft.profileId && editorDirty) await saveProfile();
       onUpdate(draft);
       onClose();
     } catch (err) {
-      setProfileNote(err instanceof Error ? err.message : 'Failed to save profile');
+      setSaveError(err instanceof Error ? err.message : 'Failed to save settings');
     }
   };
 
@@ -142,6 +144,21 @@ const Settings: React.FC<SettingsProps> = ({ isOpen, onClose, initialSettings, o
               </button>
             </div>
             <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  <input
+                    type="checkbox"
+                    checked={draft.saveTranscriptHistory === true}
+                    onChange={(event) => patch({ saveTranscriptHistory: event.target.checked })}
+                  />{' '}
+                  Save future final transcripts in this browser
+                </label>
+                <p className="text-sm text-gray-500 dark:text-gray-400">
+                  Off until you choose it and save. Switching off stops future history writes; it keeps existing history.
+                  Delete saved sessions in History or clear this site's browser data.{' '}
+                  <a href="/legal/data-use/">Read about data use</a>.
+                </p>
+              </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                   Input Language
@@ -487,6 +504,7 @@ const Settings: React.FC<SettingsProps> = ({ isOpen, onClose, initialSettings, o
                   Save Changes
                 </button>
               </div>
+              {saveError ? <p role="alert">{saveError}</p> : null}
             </div>
           </motion.div>
         </motion.div>

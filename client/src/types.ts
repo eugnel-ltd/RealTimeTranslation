@@ -56,6 +56,7 @@ export interface UserSettings {
   answerLanguage: AnswerLanguage;
   userContext: string;
   extraNotes: string;
+  saveTranscriptHistory?: boolean;
   profileId: CandidateProfileId;
   questionThreshold: number;
   sessionTemplateId: SessionTemplateId;

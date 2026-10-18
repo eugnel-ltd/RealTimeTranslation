@@ -71,6 +71,7 @@ const App: React.FC = () => {
   const recordingRef = useRef<RecordingOperation | null>(null);
   const recordingGenerationRef = useRef(0);
   const pendingTranscriptsRef = useRef(new Map<string, TranscriptEntry>());
+  const historyEnabledRef = useRef(settings.saveTranscriptHistory === true);
   const lastAnsweredRef = useRef<string | null>(null);
   const lastAnsweredAtRef = useRef<number | null>(null);
   const lastAnsweredStartIdRef = useRef<number | null>(null);
@@ -97,6 +98,7 @@ const App: React.FC = () => {
   );
 
   const saveTranscriptsToHistory = useCallback(() => {
+    if (!historyEnabledRef.current) return;
     if (pendingTranscriptsRef.current.size === 0) return;
     const savedIds = new Set(persistTranscriptEntries([...pendingTranscriptsRef.current.values()]));
     if (savedIds.size === 0) return;
@@ -171,7 +173,7 @@ const App: React.FC = () => {
       };
       if (interimIndex !== -1) updated[interimIndex] = entry;
       else updated.push(entry);
-      if (isFinal) pendingTranscriptsRef.current.set(entry.id, entry);
+      if (isFinal && historyEnabledRef.current) pendingTranscriptsRef.current.set(entry.id, entry);
       // Publish the ref and retry queue synchronously so an immediate Stop cannot lose a final
       // while React is batching the corresponding render.
       transcriptsRef.current = updated;
@@ -729,6 +731,8 @@ const App: React.FC = () => {
   };
 
   const handleSettingsUpdate = (next: UserSettings) => {
+    historyEnabledRef.current = next.saveTranscriptHistory === true;
+    if (!historyEnabledRef.current) pendingTranscriptsRef.current.clear();
     const languageChanged =
       next.inputLanguage !== settings.inputLanguage ||
       next.outputLanguage !== settings.outputLanguage ||
@@ -868,6 +872,13 @@ const App: React.FC = () => {
             <History />
           )}
         </main>
+
+        <footer aria-label="Legal and data controls">
+          <a href="/legal/privacy/">Privacy</a>{' · '}
+          <a href="/legal/terms/">Terms</a>{' · '}
+          <a href="/legal/refunds/">Free service and refunds</a>{' · '}
+          <a href="/legal/data-use/">Data use and storage choices</a>
+        </footer>
 
         {isSettingsOpen && (
           <Settings

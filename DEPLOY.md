@@ -23,7 +23,7 @@ Refusals return JSON **429** with `Retry-After: 60`. Limiter errors return **503
 
 These guards do not impose a US$5 monthly cap. [Cloudflare rate limits](https://developers.cloudflare.com/workers/runtime-apis/bindings/rate-limit/) are approximate and local to each location. WebSockets are checked at the handshake; existing streams and issued provider tokens continue outside these request budgets.
 
-A person must set the account-wide backstops: [Google AI Studio monthly spend caps](https://ai.google.dev/gemini-api/docs/billing/) on all relevant projects, and an [Azure monthly budget with alerts](https://learn.microsoft.com/en-us/azure/cost-management-billing/costs/tutorial-acm-create-budgets) for Speech/Translator. Azure budgets alert rather than stop usage, so arrange a human response. Cover other apps sharing these accounts too. Answers run on the Gemini free tier. The free tier applies only when the Google project has no billing account linked; Google uses free-tier content to improve its products.
+A person must set the account-wide backstops: [Google AI Studio monthly spend caps](https://ai.google.dev/gemini-api/docs/billing/) on all relevant projects, and an [Azure monthly budget with alerts](https://learn.microsoft.com/en-us/azure/cost-management-billing/costs/tutorial-acm-create-budgets) for Speech/Translator. Azure budgets alert rather than stop usage, so arrange a human response. Cover other apps sharing these accounts too. Google requires Paid Services for UK API clients; verify an active billing account before Gemini use. Its UK data-use rule applies paid handling even to unpaid quota. See [current provider evidence](docs/legal/provider-evidence.md); an API key does not prove billing eligibility.
 
 ## Secrets
 

@@ -4,32 +4,36 @@ Feature at level 2. Expenditure: none. Root approved the scope on 18 October 202
 
 ## Sources and delivery
 
-Use the corrected shared legal renderer, including reviewed explicit pending ICO support. The canonical HQ record stays the authority. Keep a generated public-facts snapshot with its source commit and digest for repeatable offline builds; never maintain it as a second authority. Product data facts stay in product.yaml. Public provider sources and dates go in docs/legal/provider-evidence.md.
+Use the shared renderer with the reviewed pending ICO change. The canonical HQ record stays the authority. Keep a generated public-facts snapshot with its source commit and digest for repeatable offline builds; never maintain it as a second authority. Product data facts stay in product.yaml. Public provider sources and dates go in docs/legal/provider-evidence.md.
 
-Generate privacy, terms, refunds and data-use pages at /legal/privacy/, /legal/terms/, /legal/refunds/ and /legal/data-use/. Use static semantic HTML and escape all content. Support only the fixed headings, paragraphs and lists in the shared output, not raw HTML or arbitrary active links. Give fixed navigation links and known contacts. The build regenerates pages from reviewed source inputs and includes them in assets. Add yaml 2.8.3 as an explicit build dependency rather than rely on a transitive package. Pin the reviewed platform commit.
+Generate privacy, terms, refunds and data-use pages at /legal/privacy/, /legal/terms/, /legal/refunds/ and /legal/data-use/. Use static semantic HTML and escape all content. Support only the fixed headings, paragraphs and lists in the shared output, not raw HTML or arbitrary active links. Give fixed navigation links and known contacts. The build regenerates pages from reviewed source inputs and includes them in assets. Add yaml 2.8.3 directly for the build. Do not rely on another package to provide it. Pin the reviewed platform commit.
 
-App links point to the pages. Keep the existing site Access boundary and every API Access check. Existing assets serve the pages; no new Worker service or binding. No layout, colour, font, screenshot or icon changes. Listing metadata belongs to root on a separate branch.
+App links point to the pages. Keep the existing site Access boundary and every API Access check. Use the asset service to serve the pages. Add no Worker service or binding. No layout, colour, font, screenshot or icon changes. Root owns listing metadata on a separate branch.
 
-Policy copy describes the current free, private adult professional product, provider processing and transfer terms, browser/profile/support retention and actual rights controls. State pending application C2062045, never a registration number. Correct the old generic Google free-tier warning using current terms: UK API users require Paid Services, and UK data handling follows the applicable paid-data terms. Billing status is a real configuration fact, not guessed or changed. Planned Sentry is labelled planned until live. No solicitor prerequisite; disclose the owner's current unreviewed-template policy in PR.
+Policy copy describes the current free, private adult professional product, provider processing and transfer terms, browser/profile/support retention and actual rights controls. State pending application C2062045, never a registration number. Correct the old Google warning. Current terms require Paid Services for UK API users. Its UK data-use rule also applies paid handling to unpaid quota. Do not guess or change the billing state. Describe Sentry as planned until it goes live. No solicitor prerequisite; disclose the owner's current unreviewed-template policy in PR.
 
 ## History consent
 
-Root separately approved positive opt-in for optional automatic history. Add an explicit saveTranscriptHistory preference. It is off unless exactly true, including existing settings without this new choice. Do not erase or migrate old history, notes or settings. A plain control uses existing styles and accurate copy: save future final transcripts in this browser; switching off stops future writes and does not remove old history.
+Root approved a positive choice before the app saves optional history. Add an explicit saveTranscriptHistory preference. Treat only true as a positive choice. Keep it off for old settings that lack this choice. Do not erase or migrate old history, notes or settings. Use a plain control with the existing styles. Say that it saves future final transcripts in this browser. If the user switches it off, stop future writes and keep old history.
 
-Gate both the retry queue and flush with a current ref so a live session honours withdrawal immediately. Clear only the in-memory pending write queue on withdrawal. Do not enqueue text recorded while off for later retroactive saving. Keep current transcript display, old durable history, user-saved notes and selected settings. When opted in, preserve immediate-stop, delayed-stop, retry, unload and Clear Transcripts flush behavior. History deletion remains explicit.
+Use a current ref to gate the queue and flush. A live session must honour withdrawal at once. Clear only the in-memory pending write queue on withdrawal. Do not enqueue text recorded while off for later retroactive saving. Keep current transcript display, old durable history, user-saved notes and selected settings. When opted in, preserve immediate-stop, delayed-stop, retry, unload and Clear Transcripts flush behavior. The user still chooses any deletion of saved history.
 
-Keep necessary Access/security and user-requested saved settings distinct. Add no fake analytics consent switch or tracking banner. Browser microphone permission stays real. Data-use text explains participant notice and lawful recording; it is not a claim that browser permission covers other speakers.
+Keep necessary Access/security and user-requested saved settings distinct. Add no fake analytics consent switch or tracking banner. Browser microphone permission stays real. Explain notice to participants and lawful recording. Browser permission does not cover other speakers.
 
 ## Files and tests
 
 Own App.tsx, Settings.tsx, settings service/types, a small legal links component, legal generator/build command, product legal facts, generated canonical snapshot/pages and evidence docs. Coordinate with the API agent; account integration starts from the merged history work and later scopes its preference per account.
 
-Commit this plan, then meaningful tests before source. Test default-off and invalid preference refusal; positive save and immediate withdrawal in a running session; no retroactive queue; preserve old storage and opted-in stop/retry/unload/clear paths. Existing regressions retain their assertions and explicitly opt in where they test the saved-history contract.
+Commit this plan, then meaningful tests before source. Test default-off and invalid preference refusal; positive save and immediate withdrawal in a running session; no retroactive queue; preserve old storage and opted-in stop/retry/unload/clear paths. Preserve prior assertions. Tests for saved history must first choose that feature.
 
-Tests also exercise actual page generation and direct delivery: four pages, source facts, pending ICO/no fake ZB, free/no-account claims, provider links and data-use scope, escaped hostile text, deterministic generation and failure on missing facts. Prove linked built pages respond with HTML in a local server smoke. Record the live route check separately from local proof.
+Test actual page generation and delivery. Check all four pages and their source facts. Cover pending ICO text, free access and no account-delete claim. Check provider links, data-use scope, hostile text, stable output and failure on missing facts. Prove linked built pages respond with HTML in a local server smoke. Record the live route check separately from local proof.
 
-Run full tests, typecheck, lint, build, manifest, source links, writing and secret checks. Inspect the final diff and source snapshots. Root independently reviews the final head. Do not declare the legal baseline done or close #9 until concrete acceptance is met; finish code/content despite an identified live credential or Google billing blocker.
+Run full tests, typecheck, lint, build, manifest, source links, writing and secret checks. Inspect the final diff and source snapshots. Root independently reviews the final head. Do not mark the baseline done or close #9 before acceptance passes. Finish code and content even if a specific live check lacks access.
 
 ## Vendor evidence
 
-Earlier legal research/test lanes each exited 1 after 20 seconds. Direct fallback is authorised. No new services, repeated long waits or paid calls.
+Earlier legal research/test lanes each exited 1 after 20 seconds. Root permits direct fallback. No new services, repeated long waits or paid calls.
+
+## Storage failure detail
+
+The browser can refuse a settings write while an older positive choice remains on disk. A changed history choice still applies in memory, but the settings dialog must report that it could not save it. It must explain the reload limit and site-data removal. A separate test proves that failure without altering the first frozen tests or erasing stored data.
