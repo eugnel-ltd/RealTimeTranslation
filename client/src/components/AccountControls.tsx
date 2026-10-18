@@ -44,8 +44,8 @@ function Turnstile({ siteKey, onToken }: { siteKey: string; onToken(token: strin
 const inputClass = 'w-full px-3 py-2 rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100';
 const buttonClass = 'px-4 py-2 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-md shadow-sm';
 
-export function AccountControls({ browser, account, reauth = false, codePrompt = false }: {
-  browser: AccountBrowser; account: EnabledAccount; reauth?: boolean; codePrompt?: boolean;
+export function AccountControls({ browser, account, reauth = false, codePrompt = false, onCodeVerified }: {
+  browser: AccountBrowser; account: EnabledAccount; reauth?: boolean; codePrompt?: boolean; onCodeVerified?: () => void;
 }) {
   const [email, setEmail] = useState('');
   const [code, setCode] = useState('');
@@ -89,7 +89,7 @@ export function AccountControls({ browser, account, reauth = false, codePrompt =
           {sent && <form aria-label="Verify email code" className="space-y-2" onSubmit={(event) => {
             event.preventDefault();
             if (!email.trim() || !/^\d{6}$/.test(code)) return;
-            void work(() => browser.verifyEmail(email.trim(), code));
+            void work(async () => { await browser.verifyEmail(email.trim(), code); onCodeVerified?.(); });
           }}>
             {codePrompt && <p>Enter the email address and emailed code to finish Google verification.</p>}
             <label>Email code<input className={inputClass} required inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}" maxLength={6} value={code} onChange={(event) => setCode(event.target.value)} disabled={busy} /></label>
@@ -100,7 +100,7 @@ export function AccountControls({ browser, account, reauth = false, codePrompt =
       <div className="flex flex-wrap gap-2">
         {account.capabilities.google && <button className={buttonClass} disabled={busy} onClick={() => browser.oauth('google')}>Continue with Google</button>}
         {account.capabilities.apple && <button className={buttonClass} disabled={busy} onClick={() => browser.oauth('apple')}>Continue with Apple</button>}
-        {codePrompt && <button className={buttonClass} disabled={busy} onClick={() => { void work(() => browser.cancelGoogle()); }}>Cancel pending Google verification</button>}
+        {codePrompt && <button className={buttonClass} disabled={busy} onClick={() => { void work(async () => { await browser.cancelGoogle(); onCodeVerified?.(); }); }}>Cancel pending Google verification</button>}
         {(account.session || reauth) && <button className={buttonClass} disabled={busy} onClick={() => { void browser.signout(); }}>Sign out / switch account</button>}
       </div>
       {account.session && <form aria-label="Delete account" className="space-y-2" onSubmit={(event) => {

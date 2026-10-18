@@ -38,11 +38,11 @@ export default function AccountBootstrap() {
     const hint = () => { void manager.refresh(true); };
     const storageHint = (event: StorageEvent) => { if (event.key === HINT_KEY) hint(); };
     const refresh = () => { void manager.refresh(); };
-    const visible = () => { if (document.visibilityState === 'visible') refresh(); };
+    const onVisibilityChange = () => { if (!document.hidden) refresh(); };
     channel?.addEventListener('message', hint);
     window.addEventListener('storage', storageHint);
     window.addEventListener('focus', refresh);
-    document.addEventListener?.('visibilitychange', visible);
+    document.addEventListener?.('visibilitychange', onVisibilityChange);
     const poll = setInterval(refresh, 60_000);
     void manager.refresh();
     return () => {
@@ -50,13 +50,13 @@ export default function AccountBootstrap() {
       channel?.removeEventListener('message', hint); channel?.close();
       window.removeEventListener('storage', storageHint);
       window.removeEventListener('focus', refresh);
-      document.removeEventListener?.('visibilitychange', visible);
+      document.removeEventListener?.('visibilitychange', onVisibilityChange);
     };
   }, []);
 
-  if (state.status === 'owner') return <App key="owner" runtime={state.runtime} />;
-  if (state.status === 'account' && browser) return <App key={`${state.account.scope.environment}:${state.account.session!.accountId}`} runtime={state.runtime}
-    accountControls={<AccountControls browser={browser} account={state.account} codePrompt={returned.code} />} />;
+  if (state.status === 'owner') return <App key={state.runtime.id} runtime={state.runtime} />;
+  if (state.status === 'account' && browser) return <App key={state.runtime.id} runtime={state.runtime}
+    accountControls={<AccountControls browser={browser} account={state.account} codePrompt={returned.code} onCodeVerified={() => setReturned({ code: false, failed: false })} />} />;
   return <>
     <main className="container mx-auto px-4 py-8">
       {returned.failed && <p role="alert">Sign-in did not complete. Try an existing sign-in method again.</p>}
@@ -70,7 +70,7 @@ export default function AccountBootstrap() {
         }}>Retry {state.retry === 'signout' ? 'sign out' : state.retry === 'deletion' ? 'deletion status' : 'account access'}</button>
         {state.retry === 'deletion' && <button onClick={() => { void browser.refresh(true); }}>Verify an existing sign-in method</button>}
       </>}
-      {state.status === 'signed-out' && browser && <AccountControls browser={browser} account={state.account} reauth={state.reauth} codePrompt={returned.code} />}
+      {state.status === 'signed-out' && browser && <AccountControls browser={browser} account={state.account} reauth={state.reauth} codePrompt={returned.code} onCodeVerified={() => setReturned({ code: false, failed: false })} />}
       {state.status === 'deletion' && browser && <>
         <h2>Account deletion {state.receipt.state === 'completed' ? 'completed' : 'in progress'}</h2>
         <p role="status">{state.receipt.phase}</p><p>{state.cacheMessage}</p>

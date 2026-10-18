@@ -447,7 +447,7 @@ const Settings: React.FC<SettingsProps> = ({ isOpen, onClose, initialSettings, o
                       </button>
                       <button
                         type="button"
-                        onClick={() => void saveProfile().catch((err) => setProfileNote(err instanceof Error ? err.message : 'Save failed'))}
+                        onClick={() => void saveProfile().catch((err) => { if (!runtime || runtime.active) setProfileNote(err instanceof Error ? err.message : 'Save failed'); })}
                         className="px-3 py-1 text-sm rounded-md bg-indigo-600 text-white"
                       >
                         Save profile

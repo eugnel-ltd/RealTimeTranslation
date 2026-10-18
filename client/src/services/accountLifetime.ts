@@ -1,6 +1,7 @@
 import type { StorageScope } from './browserStorage';
 
 export interface AppRuntime {
+  readonly id: string;
   readonly storage: StorageScope;
   readonly signal: AbortSignal;
   readonly active: boolean;
@@ -22,6 +23,7 @@ export function createAppRuntime(storage: StorageScope, accountMode: boolean, on
     callbacks.clear();
   };
   return Object.freeze({
+    id: globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random()}`,
     storage, signal: abort.signal, accountMode,
     get active() { return storage.active && !abort.signal.aborted; }, revoke,
     invalidate() {
