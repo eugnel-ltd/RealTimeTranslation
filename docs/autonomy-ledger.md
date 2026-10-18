@@ -4,7 +4,7 @@ How far each task type runs by itself. The orchestrator reads this before every 
 
 Levels: 0 Propose · 1 Draft (open the PR) · 2 Merge · 3 Release (deploy, production and store submissions included, verify, roll back) · 4 Initiate (start work from the north star or a monitor).
 
-Enforcement status: `not yet green` (the company checks are pending: this public repo cannot call the private skill's workflows, and ai-sdlc `scripts/repo_ci.sh` does not run it yet). Levels 3 and 4 need green.
+Enforcement status: `not yet green` (cloud CI is available through AI-SDLC `scripts/repo_ci.sh` for this repo; the complete PR-check, reviewed-merge and release-evidence chain has not yet been demonstrated. See `docs/code-standards.md`, Enforcement in this repo). Levels 3 and 4 need green.
 
 | Task type | Level | Clean streak | Last change | Evidence |
 |---|---|---|---|---|

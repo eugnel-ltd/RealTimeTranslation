@@ -20,7 +20,10 @@ The format-lint hook runs Format, then Lint, after each edit; `{file}` in either
 
 ## Enforcement in this repo
 
-- AI-SDLC checks: pending (public repo; see `AGENTS.md`).
+- Cloud CI is available through AI-SDLC `scripts/repo_ci.sh <clone-dir> eugnel-ltd/RealTimeTranslation <pr>` (ai-sdlc #192). Its RTT case runs root/client `npm ci`, `npm test` and `npm run build`.
+- The cloud script also checks owner decisions, secrets and the manifest with adopted scripts read from the trusted base, and checks locked tests on `fix/*` branches. Its report starts with `CLOUD-CI: PASS|FAIL` and `Tested head: <sha>`; availability alone is not a passing report. Use the shared AI-SDLC `modules/enforcement.md` cloud fallback rules: a report applies to its exact head, and a PASS never overrides a completed red check.
+- The current RTT cloud case omits `npm run typecheck`, `npm run lint` and the Python desktop regressions. PR evidence must also report those checks when relevant; desktop checks use `python3 -m unittest discover -s tests -p 'test_desktop*.py'`.
+- Release enforcement remains `not yet green` in `docs/autonomy-ledger.md`. The shared module's Green on GitHub Free requirements still need evidence: checks on every PR, independent exact-head approval and green checks for merges, and release lanes running `release_evidence.sh` over the required reviewed/check-passing commit chain. No autonomy level changes with the availability of a cloud CI case.
 - Hooks: `.claude/hooks/guard-edits.sh`, `.claude/hooks/spend-gate.sh`, `.claude/hooks/plan-gate.sh`, `.claude/hooks/format-lint.sh`; spend patterns in `.claude/hooks/spend-patterns.txt`.
 - Secret scan beyond the sample patterns: `scripts/verify-bundle.mjs` checks the client bundle for key patterns.
 
