@@ -1,0 +1,32 @@
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import worker from '../worker/src/index';
+import { mockEnv } from './helpers';
+
+const origin='https://rtt-account.test.invalid';
+const scope={productId:'rtt',environment:'preview',origin};
+const key=Array(48).fill('k').join('');
+const encoder=new TextEncoder();
+const hex=(value:ArrayBuffer)=>[...new Uint8Array(value)].map(byte=>byte.toString(16).padStart(2,'0')).join('');
+async function valid(request:Request){const body=await request.clone().text();const time=request.headers.get('Eugnel-Time')??'',nonce=request.headers.get('Eugnel-Nonce')??'',mac=request.headers.get('Eugnel-Signature')??'';
+ const material=await crypto.subtle.importKey('raw',encoder.encode(key),{name:'HMAC',hash:'SHA-256'},false,['verify']);
+ const input=['eugnel-identity-v1','rtt-preview',request.method,new URL(request.url).pathname,time,nonce,hex(await crypto.subtle.digest('SHA-256',encoder.encode(body)))].join('\n');
+ return crypto.subtle.verify('HMAC',material,Uint8Array.from(atob(mac.replace(/-/g,'+').replace(/_/g,'/')),c=>c.charCodeAt(0)),encoder.encode(input));}
+function request(path:string,method='GET',body?:string,extra:Record<string,string>={}){return new Request(origin+path,{method,headers:{...(method==='POST'?{Origin:origin,'Content-Type':'application/json'}:{}),...extra},...(body===undefined?{}:{body})});}
+function fixture(responder?:(payload:Record<string,unknown>)=>Response){const calls:Array<Record<string,unknown>>=[];
+ const env=mockEnv({ACCOUNTS_ENABLED:'1',ACCOUNT_ENVIRONMENT:'preview',ACCOUNT_ORIGIN:origin,ACCOUNT_DB:{prepare(){},batch(){}} as unknown as D1Database,IDENTITY_CALLER_ID:'rtt-preview',IDENTITY_CALLER_SECRET:key,
+ IDENTITY_SERVICE:{async fetch(input:Request){expect(await valid(input)).toBe(true);expect(new URL(input.url).pathname).toBe('/v1/browser');const payload=await input.json() as Record<string,unknown>;calls.push(payload);return responder?.(payload)??Response.json({enabled:true,scope,session:null,ways:[],capabilities:{email:false,google:true,apple:false,siteKey:null}});}} as unknown as Fetcher});return{env,calls};}
+afterEach(()=>vi.restoreAllMocks());
+describe('same-origin account proxy through the actual Worker',()=>{
+ it('reports disabled mode without inspecting customer bindings or touching owner storage',async()=>{const env=mockEnv();Object.defineProperty(env,'IDENTITY_SERVICE',{get(){throw new Error('disabled binding');}});expect(await(await worker.fetch(request('/api/account'),env)).json()).toEqual({enabled:false});});
+ it('keeps Access before sign-in and account mode discovery',async()=>{const{env,calls}=fixture();env.SKIP_ACCESS_CHECK='false';const response=await worker.fetch(request('/api/account'),env);expect(response.status).toBe(403);expect(calls).toHaveLength(0);});
+ it('enabled missing product/identity configuration refuses instead of borrowing legacy owner mode',async()=>{const{env,calls}=fixture();delete env.IDENTITY_SERVICE;expect((await worker.fetch(request('/api/account'),env)).status).toBe(503);expect(calls).toHaveLength(0);});
+ it('signs the exact fixed-origin browser request and forwards only identity cookies and transport headers',async()=>{const{env,calls}=fixture();const response=await worker.fetch(request('/api/account','GET',undefined,{Cookie:`CF_Authorization=private-access; __Host-eugnel_session=${'A'.repeat(43)}`,'X-Account-Id':'victim','Cf-Access-Jwt-Assertion':'private-access-assertion'}),env);
+  expect(response.status).toBe(200);expect(calls).toHaveLength(1);expect(calls[0].method).toBe('GET');expect(calls[0].path).toBe('/api/account');expect(calls[0].headers).toEqual({Cookie:`__Host-eugnel_session=${'A'.repeat(43)}`});expect(JSON.stringify(calls)).not.toContain('private-access');expect(JSON.stringify(calls)).not.toContain('victim');});
+ it('rejects changed origins, duplicate session cookies and oversized auth bodies before service work',async()=>{const{env,calls}=fixture();
+  for(const req of [request('/api/auth/signout','POST','{}',{Origin:'https://evil.test'}),request('/api/account','GET',undefined,{Cookie:`__Host-eugnel_session=${'A'.repeat(43)}; __Host-eugnel_session=${'B'.repeat(43)}`}),request('/api/auth/email/start','POST','x'.repeat(4097))])expect((await worker.fetch(req,env)).status).toBe(400);
+  expect(calls).toHaveLength(0);});
+ it('preserves scoped session/deletion cookies and valid fixed OAuth redirects without exposing tokens in JSON',async()=>{const{env}=fixture(()=>new Response(null,{status:303,headers:{Location:'/api/auth/apple/finalize?state=opaque','Set-Cookie':`__Host-eugnel_flow=${'F'.repeat(43)}; HttpOnly; Secure; SameSite=None; Path=/; Max-Age=600`}}));const response=await worker.fetch(request('/api/auth/apple/callback','POST','state=opaque&code=opaque',{'Content-Type':'application/x-www-form-urlencoded',Origin:'https://appleid.apple.com'}),env);expect(response.status).toBe(303);expect(response.headers.get('Location')).toBe('/api/auth/apple/finalize?state=opaque');expect(response.headers.get('Set-Cookie')).toContain('HttpOnly');expect(await response.text()).toBe('');});
+ it('refuses arbitrary external redirects and unrelated or insecure upstream cookies',async()=>{for(const response of [new Response(null,{status:302,headers:{Location:'https://evil.test/steal'}}),new Response('{}',{headers:{'Set-Cookie':'foreign=value; Secure; HttpOnly; Path=/'}}),new Response('{}',{headers:{'Set-Cookie':`__Host-eugnel_session=${'A'.repeat(43)}; Path=/`}})]){const{env}=fixture(()=>response);expect((await worker.fetch(request('/api/auth/google/start'),env)).status).toBe(503);}});
+ it('a wrong-scope bootstrap response cannot establish browser account state',async()=>{const{env}=fixture(()=>Response.json({enabled:true,scope:{...scope,environment:'production'},session:null,ways:[],capabilities:{}}));expect((await worker.fetch(request('/api/account'),env)).status).toBe(503);});
+ it('sign-in route and deletion resume are available signed out while existing paid routes remain guarded',async()=>{const{env,calls}=fixture(payload=>Response.json(new URL(origin+String(payload.path)).pathname.includes('/delete/')?{state:'pending',phase:'products',jobId:'job',completedAt:null}:{ok:true}));expect((await worker.fetch(request('/api/auth/email/start','POST','{"email":"a@example.test","turnstile":"synthetic"}'),env)).status).toBe(200);expect((await worker.fetch(request('/api/account/delete/status'),env)).status).toBe(200);expect((await worker.fetch(request('/api/speech-token'),env)).status).toBe(401);expect(calls).toHaveLength(2);});
+});
