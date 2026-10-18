@@ -206,7 +206,7 @@ Default: TypeSafe **Jev** (`jev-latest`, `POST /v1/systemone`). See `worker/src/
 
 If `TYPESAFE_API_KEY` is missing, auto-detect falls back to **Gemini `gemini-3.5-flash-lite`**. If Jev times out (~3s, one retry) or returns 429/5xx/529, the Worker pauses auto-detect for **20 seconds** (`unavailable`) instead of calling the fallback on every debounce. The client `QuestionDetector` interface is the plug point for a later external service.
 
-Manual **Answer now** posts `mode: "question-start"` so Jev can point at where the current question *starts* (preamble included). If Jev is unavailable, the client sends the full generous window (90–120s, or back to the previous answer, capped at 3 minutes) and Gemini extracts. Extraction must include preamble and all sub-parts (never truncate).
+Manual **Answer now** posts `mode: "question-start"` so Jev can point at where the current question *starts* (preamble included). If Jev is unavailable, the client sends the full generous window (90–120s, or back to the previous answer, capped at 3 minutes) and Gemini extracts. Extraction must include preamble and all sub-parts (never truncate). The detector retains its 500-word budget; automatic extraction and tail updates keep every eligible segment in order, subject to the same three-minute history floor. Answer requests above 256 KiB of combined UTF-8 prompt text (conversation, question, hint, previous question, context, notes and legacy notes) are refused with HTTP 413 before profile or provider calls, rather than truncated. Profiles retain their separate 200 KiB upload limit.
 
 ## Session templates
 
