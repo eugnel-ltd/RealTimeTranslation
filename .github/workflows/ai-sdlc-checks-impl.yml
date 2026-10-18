@@ -143,8 +143,10 @@ jobs:
         # run on a failure too, or a revoked approval would leave the last success in place.
         run: |
           set -u
-          git fetch -q origin "$BASE"
-          if git show "origin/$BASE:$SCRIPTS/review_on_head.sh" > "$RUNNER_TEMP/review_on_head.sh" 2>/dev/null; then
+          if ! git fetch -q origin "$BASE"; then
+            code=2; line="trusted base unavailable"
+            echo "::error::could not fetch the trusted base"
+          elif git show "origin/$BASE:$SCRIPTS/review_on_head.sh" > "$RUNNER_TEMP/review_on_head.sh" 2>/dev/null; then
             # This repo is public. GitHub's author association, never PR content, selects
             # the comments the unchanged upstream parser may treat as review evidence.
             if gh api --paginate "repos/$GITHUB_REPOSITORY/issues/$PR/comments?per_page=100" \
