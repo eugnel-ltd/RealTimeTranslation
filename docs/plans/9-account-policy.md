@@ -3,7 +3,7 @@
 - Intent: RTT #9 legal delivery; coordinates RTT #8 accounts before activation.
 - Spec: the approved shared identity spec `docs/specs/rtt-8-identity.md` in the platform source and the final RTT account implementation. This slice changes no auth behavior.
 - Task type and level: config/docs at level2. No expenditure, new service, deployment or visual work.
-- Acceptance: pending root review of this exact plan. Audit the stable shared and RTT heads before freezing content tests or changing source.
+- Accepted by: root independent review of commit `be1ca90` on18October2026. No owner or solicitor gate. Audit the stable shared and RTT heads before freezing content tests or changing source.
 
 ## Files that change
 
