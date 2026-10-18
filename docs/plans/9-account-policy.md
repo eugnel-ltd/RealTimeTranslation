@@ -44,4 +44,6 @@ Use actual local dependencies in this worktree. Healthy proof: all relevant and 
 
 ## Divergences
 
-- None. Pending stable source/configuration facts will be recorded before first-red tests and source edits, with root acceptance if scope changes.
+- No scope divergence. Root resumed the accepted slice after independent fixes on 18 October. The source audit uses shared `2ab9b2be96c0671091780ae458556a834615a67c` and RTT consumer `07413eb169df803bb7e2f23529f4211f566c1371`; the final shared documentation/fixture revision will replace this provisional citation before the final content commit. Integrate the actual merged account source before final proof.
+- The audit includes guarded Apple authorization epochs and a persistent revocation barrier, separately enabled fixed signed-notification ingress, conditional account-scoped storage, and browser cache cleanup limited to the verified deletion scope. The expected-account wire value is only a consistency precondition, not authority. Canonical account identifiers are preserved, including Unicode.
+- Explicit maintenance makes expired sessions/tickets, completed receipts/jobs and quota records eligible for bounded cleanup; it has no installed scheduler. Retain validity-versus-physical-cleanup wording and permanent minimal security fences. No provider or deployment setting was changed or inferred.
