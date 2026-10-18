@@ -96,8 +96,11 @@ def apply(commit):
     # Recheck the immutable checkout and main after building, before the first write.
     preflight(commit)
     print(f"WEB RELEASE SUBMITTING {commit}; rollback version {previous_version}", flush=True)
-    deployed = command(deploy, timeout=300)
-    if deployed.returncode:
+    try:
+        deployed = command(deploy, timeout=300)
+    except Failure:
+        deployed = None
+    if deployed is None or deployed.returncode:
         # A lost deploy response is unknown, never an invented failure/no-op. Read
         # provider state first, and roll back only a concretely changed deployment.
         try:
@@ -111,7 +114,18 @@ def apply(commit):
     active_id, active_version = deployment()
     if active_id == previous_id:
         raise Failure("deployment receipt UNKNOWN; active deployment did not change")
-    health = command(["node", "--input-type=module", "-e", "import { checkUptime } from './scripts/uptime.mjs'; const r=await checkUptime({expectVersion:process.argv[1]}); console.log(JSON.stringify(r)); process.exitCode=r.exitCode;", f"1.0.0+{commit}"], timeout=45)
+    try:
+        version = json.loads((ROOT / "package.json").read_text())["version"]
+        if not isinstance(version, str) or not version:
+            raise ValueError("invalid package version")
+    except (OSError, ValueError, KeyError) as error:
+        rollback(previous_version)
+        raise Failure("release package version cannot be read") from error
+    try:
+        health = command(["node", "--input-type=module", "-e", "import { checkUptime } from './scripts/uptime.mjs'; const r=await checkUptime({expectVersion:process.argv[1]}); console.log(JSON.stringify(r)); process.exitCode=r.exitCode;", f"{version}+{commit}"], timeout=45)
+    except Failure as error:
+        rollback(previous_version)
+        raise Hold("authenticated health receipt unavailable; rollback attempted") from error
     if health.returncode:
         rollback(previous_version)
         raise Hold("authenticated exact-SHA health failed; rollback attempted")
