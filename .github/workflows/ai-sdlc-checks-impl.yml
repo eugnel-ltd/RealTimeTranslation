@@ -1,5 +1,5 @@
 # Vendored from eugnel-ltd/ai-sdlc at b217812bca40c0b3d3ff1ba012ed8c4e33ee2636.
-# Local adaptation: each checkout explicitly selects main and does not persist credentials.
+# Local adaptations: trusted main checkouts and trusted GitHub review-comment metadata.
 # AI-SDLC checks: the PR-time controls that back the must-hold rules, for every agent on every CLI.
 #
 # Reusable workflow. An adopting repo calls it from a thin workflow (templates/workflows/
@@ -145,9 +145,19 @@ jobs:
           set -u
           git fetch -q origin "$BASE"
           if git show "origin/$BASE:$SCRIPTS/review_on_head.sh" > "$RUNNER_TEMP/review_on_head.sh" 2>/dev/null; then
-            if sh "$RUNNER_TEMP/review_on_head.sh" "$PR" "$HEAD" --repo "$GITHUB_REPOSITORY" > result.txt 2>&1; then code=0; else code=$?; fi
-            cat result.txt
-            line=$(head -1 result.txt | cut -c1-140)
+            # This repo is public. GitHub's author association, never PR content, selects
+            # the comments the unchanged upstream parser may treat as review evidence.
+            if gh api --paginate "repos/$GITHUB_REPOSITORY/issues/$PR/comments?per_page=100" \
+                --jq 'if type != "array" then error("invalid comments response") else .[] | if (.body | type) != "string" or (.author_association | type) != "string" then error("invalid comment metadata") else select(.author_association == "OWNER" or .author_association == "MEMBER" or .author_association == "COLLABORATOR") | .body + "\u001e" end end' \
+                > "$RUNNER_TEMP/trusted-review-comments.txt"; then
+              if REVIEW_ON_HEAD_COMMENTS="$RUNNER_TEMP/trusted-review-comments.txt" \
+                  sh "$RUNNER_TEMP/review_on_head.sh" "$PR" "$HEAD" --repo "$GITHUB_REPOSITORY" > result.txt 2>&1; then code=0; else code=$?; fi
+              cat result.txt
+              line=$(head -1 result.txt | cut -c1-140)
+            else
+              code=2; line="trusted review comments unavailable"
+              echo "::error::could not read trusted GitHub review comments"
+            fi
           else
             echo "::error::$SCRIPTS/review_on_head.sh is not on $BASE: merge the adoption PR (scripts/adopt.sh) before requiring this check"
             code=2; line="review_on_head.sh missing on $BASE"

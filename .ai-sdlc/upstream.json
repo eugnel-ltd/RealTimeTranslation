@@ -4,7 +4,8 @@
   "adaptations": {
     ".github/workflows/ai-sdlc-checks-impl.yml": [
       "Rename the upstream reusable workflow file for a same-repository caller.",
-      "Add provenance comments and explicit main checkouts with persist-credentials false."
+      "Add provenance comments and explicit main checkouts with persist-credentials false.",
+      "Use trusted GitHub OWNER/MEMBER/COLLABORATOR comment metadata for review evidence; fetch/parse errors still attempt an error status."
     ],
     ".github/workflows/ai-sdlc-checks.yml": [
       "Local caller uses the same-repository implementation instead of the private upstream workflow.",
@@ -64,7 +65,7 @@
       "source": ".github/workflows/checks.yml",
       "installed": ".github/workflows/ai-sdlc-checks-impl.yml",
       "source_sha256": "663f7da5a2d2f06213bb83057190c6de327184c1be74cbe7c830ef73e0af6d06",
-      "installed_sha256": "c7b146e7c9b48410a5eb9bc96b55ed83410c330a2d54001546a3511867ce7661"
+      "installed_sha256": "316c098b0b3af1ccde731a177c14a455fcec2c4c22fcb96a83d2bf1d6f519a0a"
     },
     {
       "source": "tests/test_checks_step.sh",
