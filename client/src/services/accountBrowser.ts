@@ -141,7 +141,11 @@ export class AccountBrowser {
     try {
       const result = await accountRequest('/api/auth/email/start', { email, turnstile }, this.controls.signal, control.expected);
       if (!isObject(result) || result.ok !== true) throw new AccountError('SERVICE_UNAVAILABLE', 503);
-      if (this.fresh(control.generation)) { this.codeEmail = { expected: control.expected, email }; this.message = 'If this address can receive a code, check its inbox.'; }
+      // The address is our own in-memory input. Apply it only if the fresh
+      // settled bootstrap still verifies this expectation; a benign focus may
+      // have advanced the generation while every personal runtime was held.
+      if (!this.disposed) this.codeEmail = { expected: control.expected, email };
+      if (this.fresh(control.generation)) this.message = 'If this address can receive a code, check its inbox.';
     } catch (error) { if (this.fresh(control.generation)) this.message = accountMessage(error); throw error; }
     finally { await this.settled(); }
   }
@@ -165,12 +169,16 @@ export class AccountBrowser {
     finally { await this.settled(); }
   }
   oauth(provider: 'google' | 'apple', expected?: string): void {
+    if (this.pendingControls) throw new AccountError('REQUEST_INVALID', 409);
     const captured = this.capture(expected); this.begin(); this.announce();
     window.location.assign(`/api/auth/${provider}/start?${new URLSearchParams({ expectedAccount: captured })}`);
   }
   async cancelGoogle(expected?: string): Promise<void> {
     const control = this.control(expected); this.codeEmail = null;
-    try { await accountRequest('/api/auth/google/cancel', {}, this.controls.signal, control.expected); }
+    try {
+      const result = await accountRequest('/api/auth/google/cancel', {}, this.controls.signal, control.expected);
+      if (!isObject(result) || result.ok !== true) throw new AccountError('SERVICE_UNAVAILABLE', 503);
+    }
     finally { await this.settled(); }
   }
   async deleteAccount(expected?: string): Promise<void> {
