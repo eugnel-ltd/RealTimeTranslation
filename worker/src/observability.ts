@@ -67,7 +67,9 @@ export function reportServerFailure(
 export function handleHealth(env: WorkerEnv): Promise<Response> {
   return healthResponse({
     product: 'rtt',
-    version: manifest.version,
+    version: /^[a-f0-9]{40}$/.test(env.DEPLOYMENT_SHA ?? '')
+      ? `${manifest.version}+${env.DEPLOYMENT_SHA}`
+      : manifest.version,
     checks: {
       speech: () => Boolean(env.AZURE_SPEECH_KEY || env.GEMINI_API_KEY),
       translation: () => Boolean(env.AZURE_TRANSLATOR_KEY || env.GEMINI_API_KEY),
