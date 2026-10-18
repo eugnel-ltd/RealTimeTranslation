@@ -21,8 +21,7 @@ export async function handleSpeechToken(env: WorkerEnv, fetchImpl: typeof fetch 
   });
 
   if (!res.ok) {
-    const body = await res.text();
-    logError({ message: 'azure issueToken failed', status: res.status, body: body.slice(0, 300) });
+    logError({ message: 'azure issueToken failed', status: res.status });
     return errorJson('Failed to issue Azure Speech token', 502, { status: res.status });
   }
 

@@ -6,11 +6,12 @@ Commands, repo-specific hard rules and repo-specific acceptance criteria. Change
 
 Each check is one command that exits non-zero on failure. Record what a healthy run looks like.
 
-- Test: `npm test` (after `npm ci` and `npm --prefix client ci`). Healthy: "Test Files 17 passed", exit 0.
-- Format: `<command>`. Healthy: `<...>`
-- Lint: `<command>`. Healthy: `<...>`
+- Test: `npm test` (after `npm ci` and `npm --prefix client ci`). Healthy: every discovered test file passes, exit 0 (the count grows with regressions).
+- Format: no automatic formatter is configured.
+- Lint: `npm run lint`. Healthy: ESLint reports no errors or warnings, exit 0. Checks the client, Worker, shared code, tests and scripts using the installed client toolchain.
+- Typecheck: `npm run typecheck`. Healthy: Worker, browser-aware tests, client and Vite configuration compile with no diagnostics, exit 0.
 
-The format-lint hook runs Format, then Lint, after each edit; `{file}` in either command stands for the edited file. Leave the placeholder to switch it off.
+The format-lint hook runs Format, then Lint, after each edit; `{file}` in either command stands for the edited file. A missing command switches that check off.
 - Build: `npm run build`. Healthy: `verify-bundle: ok (… no secret patterns)`, exit 0.
 - Deploy (production): `npm run build && npx wrangler deploy` (`DEPLOY.md`). Dry run first: `npm run deploy:dry`. Healthy: wrangler prints the deployed version id.
 - Rollback: `npx wrangler rollback --name rtt`. Last rehearsed: never.

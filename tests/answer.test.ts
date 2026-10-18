@@ -245,13 +245,13 @@ describe('answer', () => {
     const text = await res.text();
     expect(text).toContain('Partial answer');
     expect(text).toContain('event: error');
-    expect(text).toContain(reason);
+    expect(text).toContain('Gemini answer stopped');
     expect(text).not.toContain('event: done');
   });
 
   it.each([
-    [{ promptFeedback: { blockReason: 'BLOCKLIST' } }, 'BLOCKLIST'],
-    [{ error: { status: 'RESOURCE_EXHAUSTED', message: 'Quota exhausted' } }, 'Quota exhausted'],
+    [{ promptFeedback: { blockReason: 'BLOCKLIST' } }, 'Gemini prompt blocked'],
+    [{ error: { status: 'RESOURCE_EXHAUSTED', message: 'Quota exhausted' } }, 'Gemini free-tier quota reached'],
   ])('reports an upstream block or error object', async (payload, message) => {
     const res = await handleAnswer(post({ question: 'Hello?' }), env(), mockFetch(() => new Response(event(payload))));
     const text = await res.text();
@@ -289,13 +289,13 @@ describe('answer', () => {
     expect(await readEvents(invalid)).toContainEqual({ event: 'usage', data: { thoughtsTokenCount: 0 } });
   });
 
-  it.each([429, 400, 503])('maps upstream HTTP %s and logs at most 400 body characters', async (status) => {
+  it.each([429, 400, 503])('maps upstream HTTP %s and logs status without provider content', async (status) => {
     const logger = vi.spyOn(console, 'error').mockImplementation(() => undefined);
     try {
       const res = await handleAnswer(post({ question: 'Hello?' }), env(), mockFetch(() => textResponse('x'.repeat(1000), status)));
       expect(res.status).toBe(status === 429 ? 429 : 502);
       expect(await res.json()).toEqual(status === 429 ? { error: 'Gemini free-tier quota reached' } : { error: 'Gemini answer request failed', status });
-      expect(JSON.parse(logger.mock.calls[0][0])).toEqual({ message: 'gemini answer request failed', status, body: 'x'.repeat(400) });
+      expect(JSON.parse(logger.mock.calls[0][0])).toEqual({ message: 'gemini answer request failed', status });
     } finally { logger.mockRestore(); }
   });
 

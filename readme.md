@@ -3,7 +3,7 @@
 This repository contains two independent applications for real-time speech translation using Azure Cognitive Services:
 
 1. A standalone Python desktop application (`translator_app.py`)
-2. A modern web application (in the `client` directory) with React frontend
+2. A web application with a React frontend (`client/`), a Cloudflare Worker API (`worker/`), and shared logic (`shared/`)
 
 Both applications provide real-time speech translation capabilities but are completely independent of each other. The Python app was the initial implementation, while the web application is a more feature-rich, full-stack solution developed later.
 
@@ -44,7 +44,6 @@ The repository contains two separate applications with different tech stacks:
 - React 18 with TypeScript
 - Vite for build tooling and HMR (Hot Module Replacement)
   - Using @vitejs/plugin-react for Babel-based Fast Refresh
-  - Using @vitejs/plugin-react-swc for SWC-based Fast Refresh
 - TailwindCSS for styling
 - Framer Motion for animations
 - Microsoft Cognitive Services Speech SDK
@@ -95,8 +94,8 @@ The repository contains two separate applications with different tech stacks:
 
 2. Install the Worker and client dependencies:
    ```bash
-   npm install
-   npm --prefix client install
+   npm ci
+   npm --prefix client ci
    ```
 
 3. Configure the Worker's local variables (the browser never holds a provider key; it gets a short-lived speech token from `/api/speech-token`):
@@ -125,27 +124,37 @@ The repository contains two separate applications with different tech stacks:
 
 ### Frontend Development Notes
 - The project uses TypeScript with strict type checking
-- ESLint is configured for type-aware linting
+- ESLint checks JavaScript/TypeScript correctness and React hook usage; TypeScript checks types separately
 - React 18.3 is used with modern JSX runtime
 - Hot Module Replacement (HMR) is enabled for fast development
-- Custom ESLint rules and TypeScript configurations are in place for code quality
+- Worker, browser and browser-aware test code use separate TypeScript configurations
+
+### Verification
+
+From the repository root, after installing both dependency trees:
+
+```bash
+npm test              # regression suite; provider calls are mocked
+npm run typecheck     # Worker, tests, browser app and Vite config
+npm run lint          # client, Worker, shared code, tests and scripts
+npm run build         # production client build and provider-key pattern scan
+```
+
+The browser answer client accepts LF/CRLF SSE and final unterminated events. Cancelling an answer or translation propagates to its provider request. Transcript replay with `--answer` exits nonzero on an SSE error or a stream that ends before `done`.
 
 ## Project Structure
 
 ```
 RealTimeTranslation/
-├── translator_app.py      # Standalone Python desktop application
-├── requirements.txt       # Python dependencies for desktop app
-├── settings.json         # Settings for Python app
-│
-├── client/              # Independent web application
-│   ├── src/            # Source code
-│   ├── public/         # Static assets
-│   ├── package.json    # Frontend dependencies
-│   └── vite.config.ts  # Vite configuration
-│
-├── .venv/              # Python virtual environment
-└── README.md          # Project documentation
+├── translator_app.py       # Standalone Python desktop application
+├── requirements.txt        # Python desktop dependencies
+├── client/                 # React/Vite frontend and its dependencies
+├── worker/src/             # Access-protected API and provider integrations
+├── shared/                 # Session templates, language and transcript logic
+├── tests/                  # Node regression suite, including browser service tests
+├── scripts/                # Bundle scan, smoke and transcript replay tools
+├── wrangler.jsonc          # Worker deployment configuration
+└── readme.md
 ```
 
 ## Key Features
