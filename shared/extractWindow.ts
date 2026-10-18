@@ -6,7 +6,7 @@ export type WindowSegment = {
 
 const MAX_EXTRACT_BACK_MS = 180_000;
 
-/** Jev decision-A window: last ~90–120s. Extract may extend back to question-start; cap ~500 words for case prompts. */
+/** Detection uses the last ~90–120s and its own word budget; extraction keeps a separate contiguous window. */
 export const DETECT_WINDOW_OPTIONS = [90, 120] as const;
 export type DetectWindowSeconds = (typeof DETECT_WINDOW_OPTIONS)[number];
 export const DEFAULT_DETECT_WINDOW_SECONDS: DetectWindowSeconds = 120;
@@ -75,6 +75,25 @@ export function windowForDetect(
   const fromStart = segments.filter((s) => s.index >= extendFromIndex);
   const base = fromStart.length > 0 ? fromStart : timed;
   return capKeepingStart(base, maxWords, extendFromIndex);
+}
+
+/**
+ * Preserve every question segment through the latest final, without a detector word cap.
+ * A known start may extend the configured window, but never beyond the three-minute floor.
+ */
+export function windowForExtract(
+  segments: WindowSegment[],
+  nowMs: number,
+  windowSeconds: number,
+  startIndex?: number | null,
+  lastAnsweredAtMs?: number | null,
+): WindowSegment[] {
+  const hasStart = startIndex != null && Number.isFinite(startIndex);
+  const cutoff = hasStart
+    ? nowMs - MAX_EXTRACT_BACK_MS
+    : generousCutoffMs(nowMs, windowSeconds, lastAnsweredAtMs);
+  const eligible = segmentsAfterCutoff(segments, cutoff);
+  return hasStart ? sliceFromQuestionStart(eligible, startIndex) : eligible;
 }
 
 /**

@@ -109,6 +109,9 @@ export function shouldSkipAnswer(
   return normalizeQuestion(previousQuestion) === normalizeQuestion(question);
 }
 
+// Profiles have a separate 200 KiB upload limit; this bounds caller-supplied prompt text.
+export const MAX_ANSWER_INPUT_BYTES = 256 * 1024;
+
 export async function handleAnswer(
   request: Request,
   env: WorkerEnv,
@@ -124,6 +127,25 @@ export async function handleAnswer(
     model: isString, force: isBoolean, templateId: isString, extractQuestion: isBoolean,
     questionTimeLimitSeconds: isFiniteNumber,
   });
+  const encoder = new TextEncoder();
+  let inputBytes = 0;
+  for (const text of [
+    body.conversation, body.question, body.questionHint, body.previousQuestion,
+    body.userContext, body.extraNotes, body.cvBackground,
+  ]) {
+    if (!text) continue;
+    // UTF-8 uses at least one byte per UTF-16 code unit. Refuse obviously oversized
+    // strings before allocating an encoded copy of unbounded caller input.
+    if (text.length > MAX_ANSWER_INPUT_BYTES - inputBytes) {
+      inputBytes = MAX_ANSWER_INPUT_BYTES + 1;
+      break;
+    }
+    inputBytes += encoder.encode(text).byteLength;
+    if (inputBytes > MAX_ANSWER_INPUT_BYTES) break;
+  }
+  if (inputBytes > MAX_ANSWER_INPUT_BYTES) {
+    return errorJson('Answer input exceeds the 256 KiB limit', 413);
+  }
   const conversation = (body.conversation ?? '').trim();
   if (!conversation && !body.question) return errorJson('conversation or question is required', 400);
 
