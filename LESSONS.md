@@ -18,6 +18,12 @@ Entry format (newest first):
 
 ## Entries
 
+### Refresh verification commands after syncing main
+- Cause: issue #18 used the earlier command list after #15 added test typechecking, so runtime-green mock tests still contained a TypeScript error.
+- Fix: issue #18 replacement branch preserves the original history, locks correctly typed tests before applying the unchanged source repair, and passes all four checks.
+- Done right: reread docs/code-standards.md after integration and run test, typecheck, lint and build on the actual integrated source before reporting readiness.
+- Seen: 1× (2026-10-18)
+
 ### Resume a completed worker with followup_task
 - Cause: sending a message to a completed worker did not start a new turn, delaying API verification.
 - Fix: issue #13 delivery coordination.
