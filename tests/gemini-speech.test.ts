@@ -38,7 +38,11 @@ function stream() {
   return { getTracks: () => [track] } as unknown as MediaStream;
 }
 const config = { inputLanguage: 'en-US', outputLanguage: 'fr' };
-let callbacks: { onRecognizing: ReturnType<typeof vi.fn>; onRecognized: ReturnType<typeof vi.fn>; onError: ReturnType<typeof vi.fn> };
+let callbacks: {
+  onRecognizing: ReturnType<typeof vi.fn<(original: string, translations: string[], detectedLanguage?: string) => void>>;
+  onRecognized: ReturnType<typeof vi.fn<(original: string, translations: string[], detectedLanguage?: string) => void>>;
+  onError: ReturnType<typeof vi.fn<(message: string) => void>>;
+};
 let service: GeminiSpeechService;
 beforeEach(() => {
   vi.useFakeTimers(); vi.clearAllMocks(); sockets = []; tracks = []; autoSetup = true;
