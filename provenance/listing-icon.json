@@ -1,0 +1,35 @@
+{
+  "kind": "existing-licensed-asset-reuse",
+  "generated": false,
+  "recordedOn": "2026-10-18",
+  "authority": "Owner instruction: Reuse what exists, change no visual design.",
+  "use": "Listing material only; existing generic glyph, not a custom RTT brand mark.",
+  "modifications": "None. Original SVG bytes, paths, viewBox and currentColor are preserved.",
+  "asset": {
+    "path": "docs/listing/assets/microphone.svg",
+    "mediaType": "image/svg+xml",
+    "bytes": 437,
+    "sha256": "45487d4d4d819fbcd88d0b3e3594a29c9567a8a651221591e49c5ea0fd421f17"
+  },
+  "source": {
+    "repository": "https://github.com/tailwindlabs/heroicons",
+    "revision": "0435d4ca364a608cc75e2f8683d374e55abbae26",
+    "version": "v2.2.0",
+    "path": "optimized/24/solid/microphone.svg",
+    "url": "https://raw.githubusercontent.com/tailwindlabs/heroicons/0435d4ca364a608cc75e2f8683d374e55abbae26/optimized/24/solid/microphone.svg"
+  },
+  "existingProductUse": {
+    "source": "client/src/components/Header.tsx",
+    "component": "@heroicons/react/24/solid MicrophoneIcon",
+    "packageVersion": "2.2.0",
+    "geometry": "The two SVG path d attributes exactly match the existing RTT component."
+  },
+  "license": {
+    "identifier": "MIT",
+    "copyright": "Copyright (c) Tailwind Labs, Inc.",
+    "noticePath": "docs/listing/assets/HEROICONS-LICENSE.txt",
+    "sourceUrl": "https://raw.githubusercontent.com/tailwindlabs/heroicons/0435d4ca364a608cc75e2f8683d374e55abbae26/LICENSE",
+    "bytes": 1071,
+    "sha256": "60e0b68c0f35c078eef3a5d29419d0b03ff84ec1df9c3f9d6e39a519a5ae7985"
+  }
+}
