@@ -17,6 +17,17 @@ type SpeechCallbacks = {
   onQuotaExhausted?: (message: string, atStart: boolean) => void;
 };
 
+function actionableSpeechError(error: unknown, errorCodeName?: string): Error {
+  const failure = error instanceof Error ? error : new Error(String(error));
+  if (failure.name === 'NotAllowedError' || failure.name === 'PermissionDeniedError') {
+    return new Error('Microphone access was denied. Allow microphone access in your browser settings, then try again.');
+  }
+  if (errorCodeName === 'ConnectionFailure' || (!errorCodeName && /\bStatusCode:\s*1006\b/i.test(failure.message))) {
+    return new Error('Unable to reach Azure Speech. Check your network connection and try again.');
+  }
+  return failure;
+}
+
 export class AzureSpeechService {
   private translationRecognizer: speechsdk.TranslationRecognizer | null = null;
   private isRecognizing = false;
@@ -40,7 +51,9 @@ export class AzureSpeechService {
     const sdk = await import('microsoft-cognitiveservices-speech-sdk');
     if (session !== this.session) return;
 
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true }).catch((error: unknown) => {
+      throw actionableSpeechError(error);
+    });
     stream.getTracks().forEach((track) => track.stop());
     if (session !== this.session) return;
 
@@ -68,7 +81,7 @@ export class AzureSpeechService {
         const cancel = () => finish();
         this.cancelStart = cancel;
         this.failStart = (error) => finish(error);
-        recognizer.startContinuousRecognitionAsync(() => finish(), (error) => finish(new Error(String(error))));
+        recognizer.startContinuousRecognitionAsync(() => finish(), (error) => finish(actionableSpeechError(error)));
       });
     } catch (err) {
       if (session !== this.session) return;
@@ -164,7 +177,7 @@ export class AzureSpeechService {
         );
         return;
       }
-      const message = `Error: ${event.errorDetails} (Code: ${event.errorCode})`;
+      const message = actionableSpeechError(`Error: ${event.errorDetails} (Code: ${event.errorCode})`, errorCodeName).message;
       if (this.failStart) {
         this.failStart(new Error(message));
         return;
