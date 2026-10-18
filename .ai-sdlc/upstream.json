@@ -1,0 +1,88 @@
+{
+  "repository": "https://github.com/eugnel-ltd/ai-sdlc",
+  "revision": "b217812bca40c0b3d3ff1ba012ed8c4e33ee2636",
+  "adaptations": {
+    ".github/workflows/ai-sdlc-checks-impl.yml": [
+      "Rename the upstream reusable workflow file for a same-repository caller.",
+      "Add provenance comments and explicit main checkouts with persist-credentials false."
+    ],
+    ".github/workflows/ai-sdlc-checks.yml": [
+      "Local caller uses the same-repository implementation instead of the private upstream workflow.",
+      "Select the existing self-hosted ai-sdlc runner labels; preserve checks job prefix, events and permissions."
+    ]
+  },
+  "files": [
+    {
+      "source": "scripts/review_on_head.sh",
+      "installed": ".ai-sdlc/review_on_head.sh",
+      "source_sha256": "6e501113dd7d738ed39798aeddffc47f16e793bce1de8e3cdd54531345e4206a",
+      "installed_sha256": "6e501113dd7d738ed39798aeddffc47f16e793bce1de8e3cdd54531345e4206a"
+    },
+    {
+      "source": "scripts/owner_decisions_check.sh",
+      "installed": ".ai-sdlc/owner_decisions_check.sh",
+      "source_sha256": "55da520a9f9548f109718e8271d8347dde6493a8328b5744bd474f24f8c6eedc",
+      "installed_sha256": "55da520a9f9548f109718e8271d8347dde6493a8328b5744bd474f24f8c6eedc"
+    },
+    {
+      "source": "scripts/secret_scan.sh",
+      "installed": ".ai-sdlc/secret_scan.sh",
+      "source_sha256": "dc3d6677e7c3f234794945c8d2c40ca7acfa931d2869d137beba9cc46a54e1b3",
+      "installed_sha256": "dc3d6677e7c3f234794945c8d2c40ca7acfa931d2869d137beba9cc46a54e1b3"
+    },
+    {
+      "source": "scripts/manifest_check.py",
+      "installed": ".ai-sdlc/manifest_check.py",
+      "source_sha256": "5adca02026cf0d2c7f0cd7d1bec8a655ca79c3ef9575fb564a12df3bbf2fa089",
+      "installed_sha256": "5adca02026cf0d2c7f0cd7d1bec8a655ca79c3ef9575fb564a12df3bbf2fa089"
+    },
+    {
+      "source": "scripts/cf_cost_check.py",
+      "installed": ".ai-sdlc/cf_cost_check.py",
+      "source_sha256": "bd61b7dac598bf2404c9f45ae15a39771ede5b827431c49966d0abbd6cd5af6d",
+      "installed_sha256": "bd61b7dac598bf2404c9f45ae15a39771ede5b827431c49966d0abbd6cd5af6d"
+    },
+    {
+      "source": "scripts/written_by_check.py",
+      "installed": ".ai-sdlc/written_by_check.py",
+      "source_sha256": "bde5c7becacbbef6c49d330dd5e4e9dca44ec1528e7d86a5190d8740877f4cfc",
+      "installed_sha256": "bde5c7becacbbef6c49d330dd5e4e9dca44ec1528e7d86a5190d8740877f4cfc"
+    },
+    {
+      "source": "scripts/head_checks.sh",
+      "installed": ".ai-sdlc/head_checks.sh",
+      "source_sha256": "fd9feae7148aa11d12618d947429c2207c8e162cd732d53b480c8eb246387a60",
+      "installed_sha256": "fd9feae7148aa11d12618d947429c2207c8e162cd732d53b480c8eb246387a60"
+    },
+    {
+      "source": "scripts/release_evidence.sh",
+      "installed": ".ai-sdlc/release_evidence.sh",
+      "source_sha256": "a2d740258cf5f221ccfbb1801e4c216aa41a8ddb4b133e16945eeadf53bfc210",
+      "installed_sha256": "a2d740258cf5f221ccfbb1801e4c216aa41a8ddb4b133e16945eeadf53bfc210"
+    },
+    {
+      "source": ".github/workflows/checks.yml",
+      "installed": ".github/workflows/ai-sdlc-checks-impl.yml",
+      "source_sha256": "663f7da5a2d2f06213bb83057190c6de327184c1be74cbe7c830ef73e0af6d06",
+      "installed_sha256": "c7b146e7c9b48410a5eb9bc96b55ed83410c330a2d54001546a3511867ce7661"
+    },
+    {
+      "source": "tests/test_checks_step.sh",
+      "installed": "tests/ai-sdlc-upstream/test_checks_step.sh",
+      "source_sha256": "2d181eca9228599cf7bb1fe80002645d7601c1cbc4d3968696a9b525d8f44de1",
+      "installed_sha256": "2d181eca9228599cf7bb1fe80002645d7601c1cbc4d3968696a9b525d8f44de1"
+    },
+    {
+      "source": "tests/test_checks_fetch.sh",
+      "installed": "tests/ai-sdlc-upstream/test_checks_fetch.sh",
+      "source_sha256": "e5f878c501136bc686eb8bf775a08beb2149ed5815f5d647b9c4e9b748ad07a4",
+      "installed_sha256": "e5f878c501136bc686eb8bf775a08beb2149ed5815f5d647b9c4e9b748ad07a4"
+    },
+    {
+      "source": "tests/test_release_evidence.sh",
+      "installed": "tests/ai-sdlc-upstream/test_release_evidence.sh",
+      "source_sha256": "0adbf7539b654607b0234c94b084b01a821d604bf9e8bdd17fa87c15f33ea46a",
+      "installed_sha256": "0adbf7539b654607b0234c94b084b01a821d604bf9e8bdd17fa87c15f33ea46a"
+    }
+  ]
+}

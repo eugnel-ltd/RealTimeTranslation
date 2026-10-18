@@ -1,0 +1,24 @@
+# Local caller for the vendored AI-SDLC checks; upstream provenance is in .ai-sdlc/upstream.json.
+# pull_request_target and PR comments use the base/default branch definition. The implementation
+# checks out main, loads checker scripts from origin/main, and reads PR commits only as git data.
+# No application build/test or PR-provided executable runs on this self-hosted runner.
+name: AI-SDLC checks
+
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened, ready_for_review]
+  issue_comment:
+    types: [created, edited, deleted]
+
+permissions:
+  contents: read
+  pull-requests: read
+  issues: read
+  statuses: write
+
+jobs:
+  checks:
+    uses: ./.github/workflows/ai-sdlc-checks-impl.yml
+    with:
+      base: main
+      runs_on: '["self-hosted", "ai-sdlc"]'

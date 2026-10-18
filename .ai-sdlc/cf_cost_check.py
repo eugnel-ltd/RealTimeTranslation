@@ -7,8 +7,8 @@
 Exit 0 pass, 1 rule failure, 2 unreadable or unparseable input (including no TOML parser).
 Git mode reads trees and blobs only; it never checks out or executes PR code.
 Each cron entry is checked alone over a day, including its own midnight wrap.
-Named envs inherit main and HTTP settings for this check. Unlike Wrangler's binding
-inheritance, this guard accepts top-level limits/ratelimits when absent in an env.
+Named envs inherit main, HTTP settings and limits, as in Wrangler. Each environment
+must declare its own ratelimits bindings because bindings are not inherited.
 Source-name presence is a lexical check; the reviewer checks actual rate-limit use.
 """
 import argparse
@@ -186,9 +186,9 @@ def cron_gap(cron):
 
 def approves(line, key):
     # An owner decision approves a paid key when its Expenditure line names Cloudflare and the key
-    # as a whole word, so "ai" does not match "maintain".
+    # as a whole word, excluding hyphenated terms such as "non-ai" and "ai-search".
     return (re.search(r"\bcloudflare\b", line, re.I) is not None and
-            re.search(r"(?<![\w.])" + re.escape(key) + r"(?![\w])", line, re.I) is not None)
+            re.search(r"(?<![\w.-])" + re.escape(key) + r"(?![\w-])", line, re.I) is not None)
 
 
 def bounded(value, maximum):
@@ -215,6 +215,7 @@ def check(tree, path, data, existing, decisions):
                 finding(env, "paid feature", f"{key}: existing on base", "WARN")
             elif not any(approves(line, key) for line in decisions):
                 finding(env, "paid feature", f"{key}: no Expenditure: decision; remove it or obtain approval")
+        # Wrangler inherits limits, unlike bindings such as ratelimits.
         effective = {**data, **block}
         main = effective.get("main")
         pages = effective.get("pages_build_output_dir") and tree.has_dir(
@@ -225,14 +226,21 @@ def check(tree, path, data, existing, decisions):
                 if not isinstance(limits, dict) or not bounded(limits.get(key), maximum):
                     finding(env, "invocation limit", f"limits.{key} must be an integer between 1 and {maximum}")
         if main and (effective.get("routes") or effective.get("route") or effective.get("workers_dev") is not False):
-            bindings = effective.get("ratelimits", [])
+            bindings = block.get("ratelimits", [])
             names = [b.get("name") for b in bindings if isinstance(b, dict)] if isinstance(bindings, list) else []
-            names = [n for n in names if isinstance(n, str) and n]
             if not names:
                 finding(env, "rate limit", "HTTP Worker needs a named ratelimits binding")
             else:
+                invalid = [name for name in names if not isinstance(name, str) or
+                           re.fullmatch(r"[A-Za-z_$][A-Za-z0-9_$]*", name) is None]
+                if invalid:
+                    for name in invalid:
+                        finding(env, "rate limit", f"ratelimits binding name {name!r} must be a JavaScript identifier")
+                    continue
                 sources = list(tree.sources(path))
-                if not any(name in source for name in names for source in sources):
+                if not any(re.search(r"(?<![A-Za-z0-9_$])" + re.escape(name) +
+                                     r"(?![A-Za-z0-9_$])", source)
+                           for name in names for source in sources):
                     finding(env, "rate limit", "ratelimits binding name is unused in source files")
     return findings
 
