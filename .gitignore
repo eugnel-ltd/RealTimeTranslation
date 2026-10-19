@@ -41,6 +41,3 @@ worker-configuration.d.ts
 /client/public/legal/
 .claude/gate.log
 .ai-sdlc/quota.json
-
-# Local agent stub (not for CI)
-test-stubs/
