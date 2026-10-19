@@ -4,8 +4,17 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parse } from 'yaml';
 import { legalData, render, renderAll } from 'eugnel-platform/legal';
-import { companyBodyLine, companyFooterLine } from './legal-company-lines.mjs';
-import { refreshDataUseMarkdown, refreshPolicyMarkdown } from './legal-rtt-refresh.mjs';
+import {
+  COMPANY_INFORMATION_PATH,
+  companyPageMainHtml,
+  siteFooterHtml,
+} from './legal-company-lines.mjs';
+import {
+  linkCompanyNameInPolicyHtml,
+  refreshDataUseMarkdown,
+  refreshPolicyMarkdown,
+  stripCompanyIdentifiersFromPolicyHtml,
+} from './legal-rtt-refresh.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const args = process.argv.slice(2);
@@ -33,7 +42,16 @@ function bodyHtml(markdown) {
   }).join('\n');
 }
 
+function policyMainHtml(markdown, route, company) {
+  const refreshed = refreshPolicyMarkdown(route, markdown, company);
+  let html = bodyHtml(refreshed);
+  html = stripCompanyIdentifiersFromPolicyHtml(html, company);
+  html = linkCompanyNameInPolicyHtml(html);
+  return html;
+}
+
 const legalNav = '<nav aria-label="Legal"><a href="/">Application</a> · <a href="/legal/privacy/">Privacy</a> · <a href="/legal/terms/">Terms</a> · <a href="/legal/refunds/">Free service and refunds</a> · <a href="/legal/data-use/">Data use and storage choices</a></nav>';
+const siteFooter = siteFooterHtml();
 const sources = [
   ['Google Gemini terms', 'https://ai.google.dev/gemini-api/terms'],
   ['Google abuse monitoring', 'https://ai.google.dev/gemini-api/docs/usage-policies'],
@@ -60,14 +78,13 @@ try {
     }
   }
   const company = parse(companyBytes.toString('utf8'));
-  const footerLine = companyFooterLine(company);
   const generatedDir = join(root, 'client/src/generated');
   mkdirSync(generatedDir, { recursive: true });
-  writeFileSync(join(generatedDir, 'company-lines.json'), JSON.stringify({
-    footer: footerLine,
-    body: companyBodyLine(company),
-  }));
-  const navigation = `${legalNav}<p>${escape(footerLine)}</p>`;
+  writeFileSync(join(generatedDir, 'company-lines.json'), `${JSON.stringify({
+    copyright: '© EUGNEL LTD',
+    companyInformationPath: COMPANY_INFORMATION_PATH,
+    companyInformationLabel: 'Company information',
+  }, null, 2)}\n`);
   const pages = renderAll({ manifest, company });
   const dataUseSource = refreshDataUseMarkdown(
     readFileSync(join(root, 'legal/data-use.md'), 'utf8'),
@@ -76,23 +93,27 @@ try {
   pages['data-use.md'] = render(dataUseSource, legalData({ manifest, company }));
   const pageNames = { privacy: 'privacy-policy.md', terms: 'terms-of-service.md', refunds: 'refund-policy.md', 'data-use': 'data-use.md' };
   const output = Object.fromEntries(Object.entries(pageNames).map(([route, name]) => {
-    const markdown = route === 'data-use'
-      ? pages[name]
-      : refreshPolicyMarkdown(route, pages[name], company);
+    const main = route === 'data-use'
+      ? bodyHtml(pages[name])
+      : policyMainHtml(pages[name], route, company);
     const references = route === 'data-use'
       ? `<section><h2>Provider notices</h2><ul>${sources.map(([label, href]) => `<li><a href="${href}" rel="noreferrer">${label}</a></li>`).join('')}</ul></section>`
       : '';
-    const html = `<!doctype html>\n<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="robots" content="noindex,nofollow"><title>${escape(manifest.name)}: ${escape(route)}</title></head><body>${navigation}<main>${bodyHtml(markdown)}${references}<p>Privacy: <a href="mailto:${escape(company.privacy_email)}">${escape(company.privacy_email)}</a>. Support: <a href="mailto:${escape(manifest.support)}">${escape(manifest.support)}</a>.</p></main></body></html>\n`;
+    const html = `<!doctype html>\n<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="robots" content="noindex,nofollow"><title>${escape(manifest.name)}: ${escape(route)}</title></head><body>${legalNav}<main>${main}${references}<p>Privacy: <a href="mailto:${escape(company.privacy_email)}">${escape(company.privacy_email)}</a>. Support: <a href="mailto:${escape(manifest.support)}">${escape(manifest.support)}</a>.</p></main>${siteFooter}</body></html>\n`;
     return [route, html];
   }));
-  const out = option('--out', join(root, 'client/public/legal'));
+  const legalOut = option('--out', join(root, 'client/public/legal'));
+  const companyOutDir = option('--company-out', join(root, 'client/public/company'));
+  const companyHtml = `<!doctype html>\n<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="robots" content="noindex,nofollow"><title>${escape(manifest.name)}: Company information</title></head><body>${legalNav}<main>${companyPageMainHtml(company, escape)}</main>${siteFooter}</body></html>\n`;
   // Build every document before writing any. A missing field cannot create a
   // partial policy set that could look like a successful build.
   for (const [route, html] of Object.entries(output)) {
-    mkdirSync(join(out, route), { recursive: true });
-    writeFileSync(join(out, route, 'index.html'), html);
+    mkdirSync(join(legalOut, route), { recursive: true });
+    writeFileSync(join(legalOut, route, 'index.html'), html);
   }
-  console.log(`legal: generated ${Object.keys(output).length} linked pages`);
+  mkdirSync(companyOutDir, { recursive: true });
+  writeFileSync(join(companyOutDir, 'index.html'), companyHtml);
+  console.log(`legal: generated ${Object.keys(output).length} linked pages and company information`);
 } catch (error) {
   console.error(error instanceof Error ? error.message : 'Legal generation failed');
   process.exitCode = 1;
