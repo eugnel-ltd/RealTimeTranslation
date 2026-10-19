@@ -4,6 +4,8 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parse } from 'yaml';
 import { legalData, render, renderAll } from 'eugnel-platform/legal';
+import { companyBodyLine, companyFooterLine } from './legal-company-lines.mjs';
+import { refreshDataUseMarkdown, refreshPolicyMarkdown } from './legal-rtt-refresh.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const args = process.argv.slice(2);
@@ -31,7 +33,7 @@ function bodyHtml(markdown) {
   }).join('\n');
 }
 
-const navigation = '<nav aria-label="Legal"><a href="/">Application</a> · <a href="/legal/privacy/">Privacy</a> · <a href="/legal/terms/">Terms</a> · <a href="/legal/refunds/">Free service and refunds</a> · <a href="/legal/data-use/">Data use and storage choices</a></nav>';
+const legalNav = '<nav aria-label="Legal"><a href="/">Application</a> · <a href="/legal/privacy/">Privacy</a> · <a href="/legal/terms/">Terms</a> · <a href="/legal/refunds/">Free service and refunds</a> · <a href="/legal/data-use/">Data use and storage choices</a></nav>';
 const sources = [
   ['Google Gemini terms', 'https://ai.google.dev/gemini-api/terms'],
   ['Google abuse monitoring', 'https://ai.google.dev/gemini-api/docs/usage-policies'],
@@ -58,14 +60,29 @@ try {
     }
   }
   const company = parse(companyBytes.toString('utf8'));
+  const footerLine = companyFooterLine(company);
+  const generatedDir = join(root, 'client/src/generated');
+  mkdirSync(generatedDir, { recursive: true });
+  writeFileSync(join(generatedDir, 'company-lines.json'), JSON.stringify({
+    footer: footerLine,
+    body: companyBodyLine(company),
+  }));
+  const navigation = `${legalNav}<p>${escape(footerLine)}</p>`;
   const pages = renderAll({ manifest, company });
-  pages['data-use.md'] = render(readFileSync(join(root, 'legal/data-use.md'), 'utf8'), legalData({ manifest, company }));
+  const dataUseSource = refreshDataUseMarkdown(
+    readFileSync(join(root, 'legal/data-use.md'), 'utf8'),
+    company,
+  );
+  pages['data-use.md'] = render(dataUseSource, legalData({ manifest, company }));
   const pageNames = { privacy: 'privacy-policy.md', terms: 'terms-of-service.md', refunds: 'refund-policy.md', 'data-use': 'data-use.md' };
   const output = Object.fromEntries(Object.entries(pageNames).map(([route, name]) => {
+    const markdown = route === 'data-use'
+      ? pages[name]
+      : refreshPolicyMarkdown(route, pages[name], company);
     const references = route === 'data-use'
       ? `<section><h2>Provider notices</h2><ul>${sources.map(([label, href]) => `<li><a href="${href}" rel="noreferrer">${label}</a></li>`).join('')}</ul></section>`
       : '';
-    const html = `<!doctype html>\n<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="robots" content="noindex,nofollow"><title>${escape(manifest.name)}: ${escape(route)}</title></head><body>${navigation}<main>${bodyHtml(pages[name])}${references}<p>Privacy: <a href="mailto:${escape(company.privacy_email)}">${escape(company.privacy_email)}</a>. Support: <a href="mailto:${escape(manifest.support)}">${escape(manifest.support)}</a>.</p></main></body></html>\n`;
+    const html = `<!doctype html>\n<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="robots" content="noindex,nofollow"><title>${escape(manifest.name)}: ${escape(route)}</title></head><body>${navigation}<main>${bodyHtml(markdown)}${references}<p>Privacy: <a href="mailto:${escape(company.privacy_email)}">${escape(company.privacy_email)}</a>. Support: <a href="mailto:${escape(manifest.support)}">${escape(manifest.support)}</a>.</p></main></body></html>\n`;
     return [route, html];
   }));
   const out = option('--out', join(root, 'client/public/legal'));

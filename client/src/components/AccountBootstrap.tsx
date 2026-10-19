@@ -2,17 +2,9 @@ import { useEffect, useState } from 'react';
 import App from '../App';
 import { AccountBrowser, type BrowserAccountState } from '../services/accountBrowser';
 import { AccountControls } from './AccountControls';
+import { LegalFooter } from './LegalFooter';
 
 const HINT_KEY = 'rtt_account_change';
-
-function LegalLinks() {
-  return <footer aria-label="Legal and data controls">
-    <a href="/legal/privacy/">Privacy</a>{' · '}
-    <a href="/legal/terms/">Terms</a>{' · '}
-    <a href="/legal/refunds/">Free service and refunds</a>{' · '}
-    <a href="/legal/data-use/">Data use and storage choices</a>
-  </footer>;
-}
 
 export default function AccountBootstrap() {
   const [state, setState] = useState<BrowserAccountState>({ status: 'loading' });
@@ -79,6 +71,6 @@ export default function AccountBootstrap() {
         <button onClick={() => { void browser.refresh(true); }}>Check account access</button>
       </>}
     </main>
-    <LegalLinks />
+    <LegalFooter />
   </>;
 }

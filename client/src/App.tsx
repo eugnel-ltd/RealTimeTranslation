@@ -26,6 +26,7 @@ import {
 } from '../../shared/aiAnswerPanel';
 import { applyTemplateDefaults, getSessionTemplate } from '../../shared/sessionTemplates';
 import { QaItem, TranscriptEntry, SessionTemplateId, UserSettings } from './types';
+import { LegalFooter } from './components/LegalFooter';
 import { ThemeProvider } from './contexts/ThemeContext';
 import { SettingsService } from './services/settings';
 import type { AppRuntime } from './services/accountLifetime';
@@ -929,12 +930,7 @@ const App: React.FC<{ runtime?: AppRuntime; accountControls?: React.ReactNode }>
           )}
         </main>
 
-        <footer aria-label="Legal and data controls">
-          <a href="/legal/privacy/">Privacy</a>{' · '}
-          <a href="/legal/terms/">Terms</a>{' · '}
-          <a href="/legal/refunds/">Free service and refunds</a>{' · '}
-          <a href="/legal/data-use/">Data use and storage choices</a>
-        </footer>
+        <LegalFooter />
 
         {isSettingsOpen && (
           <Settings

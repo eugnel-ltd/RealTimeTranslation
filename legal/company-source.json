@@ -2,6 +2,6 @@
   "repository": "eugnel-ltd/eugnel-hq",
   "commit": "3941a3527ef76a808587a3df85148b9a2b6724dd",
   "path": "company/company.yaml",
-  "sha256": "01ccd85f47e82c99366eddfbb5b4a471b8da4a04015453f57256ea04b8d8c186",
-  "note": "Generated copy for an offline build; canonical authority is the source repository, not this snapshot."
+  "sha256": "7e8f435f0beff8d66ccebe39f5d56c8c2cf1c45522132cb93847feac4f91171d",
+  "note": "Generated copy for an offline build; canonical authority is the source repository, not this snapshot. Bytes refreshed for eugnel-hq#79 (ICO ZC277339, Ascot office without Berkshire). Update commit to the reviewed HQ revision when available from this agent environment."
 }
