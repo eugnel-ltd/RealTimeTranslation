@@ -5,22 +5,34 @@ import { join } from 'node:path';
 import { afterAll, beforeAll, expect, it } from 'vitest';
 
 const directory = mkdtempSync(join(tmpdir(), 'rtt-account-notices-'));
-const pages: Record<string, string> = {};
+const pages: Record<string, string> & { company?: string } = {};
 beforeAll(() => {
-  execFileSync(process.execPath, ['scripts/generate-legal.mjs', '--out', directory]);
+  execFileSync(process.execPath, [
+    'scripts/generate-legal.mjs',
+    '--out', join(directory, 'legal'),
+    '--company-out', join(directory, 'company'),
+  ]);
   for (const route of ['privacy', 'terms', 'refunds', 'data-use']) {
-    pages[route] = readFileSync(join(directory, route, 'index.html'), 'utf8');
+    pages[route] = readFileSync(join(directory, 'legal', route, 'index.html'), 'utf8');
   }
+  pages.company = readFileSync(join(directory, 'company', 'index.html'), 'utf8');
 });
 afterAll(() => rmSync(directory, { recursive: true, force: true }));
 
-it('keeps the actual private free service and pending ICO facts while describing conditional accounts', () => {
+it('keeps the actual private free service and registered ICO facts while describing conditional accounts', () => {
   expect(pages['data-use']).toMatch(/private tool for the authorised adult owner/);
   expect(pages['data-use']).toContain('Public signup is unavailable');
   expect(pages.refunds).toMatch(/free/i);
-  expect(pages.privacy).toMatch(/application.*pending/i);
-  expect(pages.privacy).toContain('C2062045');
-  expect(pages.privacy).not.toMatch(/registration[^<]*ZB\d|19 October 2026/);
+  expect(pages.privacy).toContain('ZC277339');
+  expect(pages.privacy).toContain('Information Commission (ICO)');
+  expect(pages.privacy).toContain('© EUGNEL LTD');
+  expect(pages.privacy).toContain('href="/company/">Company information</a>');
+  const privacyMain = pages.privacy.match(/<main>([\s\S]*)<\/main>/)?.[1] ?? '';
+  expect(privacyMain).not.toContain('17505169');
+  expect(privacyMain).not.toContain('122 New Road');
+  expect(pages.privacy).not.toMatch(/application.*pending|C2062045|Berkshire/);
+  expect(pages.company).toContain('17505169');
+  expect(pages.company).toContain('122 New Road, Ascot, SL5 8QH');
   expect(pages['data-use']).toMatch(/Account sign-in when available/);
   expect(pages['data-use']).toMatch(/account features are disabled in the current private service/i);
 });

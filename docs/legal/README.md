@@ -10,7 +10,7 @@ The shared templates have no solicitor review. On 18 October 2026, the owner aut
 
 Run `npm run legal:build` or `npm run build`. The legal step reads `product.yaml` and the generated canonical company snapshot, verifies its digest, and renders all required shared facts before writing pages. It adds the product's actual data-use notice instead of publishing generic sample consent controls. Output goes to ignored `client/public/legal/`, then into the client build.
 
-The snapshot's canonical source is `eugnel-hq/company/company.yaml`; its recorded commit and digest are in `legal/company-source.json`. Follow [the source update procedure](provider-evidence.md#build-inputs-and-facts-still-requiring-live-evidence). The current explicit pending ICO application can render as pending, never as registration. Incomplete or unknown states still fail. No expected date promotes status.
+The snapshot's canonical source is `eugnel-hq/company/company.yaml`; its recorded commit and digest are in `legal/company-source.json`. Follow [the source update procedure](provider-evidence.md#build-inputs-and-facts-still-requiring-live-evidence). The snapshot records issued ICO registration when present; incomplete or unknown states still fail. No expected date promotes status.
 
 Serve the built assets and check `/legal/privacy/`, `/legal/terms/`, `/legal/refunds/` and `/legal/data-use/`, including app navigation, contacts and HTML content types. Keep the current Access boundary. A local route check is not a live deployment check.
 

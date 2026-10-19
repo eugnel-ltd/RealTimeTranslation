@@ -44,7 +44,7 @@ sentry:
 # Current private processing and conditional account capability; provider evidence is in docs/legal/.
 legal:
   audience: general
-  effective: "2026-10-18"
+  effective: "2026-10-19"
   data:
     - category: Live microphone audio and transcript text
       purpose: Requested speech recognition, translation and optional question detection or answers
