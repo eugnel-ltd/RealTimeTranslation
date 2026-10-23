@@ -21,4 +21,4 @@ jobs:
     uses: ./.github/workflows/ai-sdlc-checks-impl.yml
     with:
       base: main
-      runs_on: '["self-hosted", "linux"]'
+      runs_on: '["ubuntu-latest"]'
