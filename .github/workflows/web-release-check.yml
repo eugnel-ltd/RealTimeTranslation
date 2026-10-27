@@ -12,6 +12,8 @@ permissions:
   pull-requests: read
   issues: read
   checks: read
+  actions: read
+  statuses: read
 
 concurrency:
   group: rtt-web-release-evidence
