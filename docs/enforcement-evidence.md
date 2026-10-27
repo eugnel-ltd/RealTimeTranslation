@@ -57,3 +57,13 @@ Azure regeneration is recorded as a completed owner operation, independently rea
 `--evidence-only` never deploys or certifies a baseline. The normal preflight still runs unchanged `manifest_check.py product.yaml --publishing web`; any required missing baseline item refuses apply. No waiver, exclusion or baseline promotion was introduced by this transition.
 
 The self-hosted workflows have no Cloudflare credentials and do not build/deploy or execute PR app code. Actual apply requires an isolated configured cloud session, exact current main, the full reviewed chain and the publishing baseline. A successful event dispatch or evidence walk is not deployed acceptance. Actual deployment identity, authenticated health, five-minute logs, recovery rehearsal, Sentry/monitor/support/identity acceptance remain in their separate product work; closing #5 claims none of them.
+
+## Remediation of #64 (a2acf10)
+
+#64 merged as `a2acf10e1f27de66d9efb9adda6e2fe97f6d1864` on 23 October 2026 and moved four workflows (`ai-sdlc-checks.yml`, `auto-merge.yml`, `uptime.yml`, `web-release-check.yml`) from the self-hosted runner to GitHub-hosted `ubuntu-latest`.
+It also changed the auto-merge cron from every 30 minutes to every 2 hours, with James's approval in eugnel-ltd/ai-sdlc#483.
+AI-SDLC `release_evidence.sh` holds the commit because no independent APPROVE names its final head `eb2d8a960bad36705389c97a36c2e880c8e7bbd4`.
+Cloud CI on that head reported FAIL because `tests/uptime-workflow.test.ts` still expected `self-hosted`.
+#66 (merge `91a105769d9361a59fdc93ef9cd48531a3a2359f`) fixed that test, and cloud CI reported PASS on its head `3d2eb80e1fe9e025adf02b22fc610b44508cd37a`.
+This PR provides independent review of #64's change: reviewers read `git diff a2acf10^ a2acf10` and, if they accept it, include `Remediates: a2acf10e1f27de66d9efb9adda6e2fe97f6d1864` in their APPROVE.
+AI-SDLC `scripts/release_remediation.sh` then accepts the held commit, as specified in AI-SDLC `modules/enforcement.md`.
