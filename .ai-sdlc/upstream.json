@@ -1,18 +1,7 @@
 {
   "repository": "https://github.com/eugnel-ltd/ai-sdlc",
   "revision": "b217812bca40c0b3d3ff1ba012ed8c4e33ee2636",
-  "adaptations": {
-    ".github/workflows/ai-sdlc-checks-impl.yml": [
-      "Rename the upstream reusable workflow file for a same-repository caller.",
-      "Add provenance comments and explicit main checkouts with persist-credentials false.",
-      "Use trusted GitHub OWNER/MEMBER/COLLABORATOR comment metadata for review evidence; fetch/parse errors still attempt an error status.",
-      "Guard trusted-base fetch failure under bash -e so the shared status-write path still attempts an error status."
-    ],
-    ".github/workflows/ai-sdlc-checks.yml": [
-      "Local caller uses the same-repository implementation instead of the private upstream workflow.",
-      "Select the existing self-hosted ai-sdlc runner labels; preserve checks job prefix, events and permissions."
-    ]
-  },
+  "adaptations": {},
   "files": [
     {
       "source": "scripts/review_on_head.sh",
@@ -61,24 +50,6 @@
       "installed": ".ai-sdlc/release_evidence.sh",
       "source_sha256": "a2d740258cf5f221ccfbb1801e4c216aa41a8ddb4b133e16945eeadf53bfc210",
       "installed_sha256": "a2d740258cf5f221ccfbb1801e4c216aa41a8ddb4b133e16945eeadf53bfc210"
-    },
-    {
-      "source": ".github/workflows/checks.yml",
-      "installed": ".github/workflows/ai-sdlc-checks-impl.yml",
-      "source_sha256": "663f7da5a2d2f06213bb83057190c6de327184c1be74cbe7c830ef73e0af6d06",
-      "installed_sha256": "27b0d138f7d8d2bb10c7e50fd897283ab0e1af11e107dfbc18c949bb86cac802"
-    },
-    {
-      "source": "tests/test_checks_step.sh",
-      "installed": "tests/ai-sdlc-upstream/test_checks_step.sh",
-      "source_sha256": "2d181eca9228599cf7bb1fe80002645d7601c1cbc4d3968696a9b525d8f44de1",
-      "installed_sha256": "2d181eca9228599cf7bb1fe80002645d7601c1cbc4d3968696a9b525d8f44de1"
-    },
-    {
-      "source": "tests/test_checks_fetch.sh",
-      "installed": "tests/ai-sdlc-upstream/test_checks_fetch.sh",
-      "source_sha256": "e5f878c501136bc686eb8bf775a08beb2149ed5815f5d647b9c4e9b748ad07a4",
-      "installed_sha256": "e5f878c501136bc686eb8bf775a08beb2149ed5815f5d647b9c4e9b748ad07a4"
     },
     {
       "source": "tests/test_release_evidence.sh",
