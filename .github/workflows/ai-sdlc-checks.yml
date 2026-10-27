@@ -1,7 +1,5 @@
-# Local caller for the vendored AI-SDLC checks; upstream provenance is in .ai-sdlc/upstream.json.
-# pull_request_target and PR comments use the base/default branch definition. The implementation
-# checks out main, loads checker scripts from origin/main, and reads PR commits only as git data.
-# No application build/test or PR-provided executable runs on this self-hosted runner.
+# The public loader serves AI-SDLC checks from the signed gate bundle.
+# No gate reads .ai-sdlc/. The loader selects GitHub-hosted Ubuntu for this public repo.
 name: AI-SDLC checks
 
 on:
@@ -15,10 +13,11 @@ permissions:
   pull-requests: read
   issues: read
   statuses: write
+  # The loader's jobs get an OIDC token for the gate broker (ai-sdlc #731).
+  id-token: write
 
 jobs:
   checks:
-    uses: ./.github/workflows/ai-sdlc-checks-impl.yml
+    uses: eugnel-ltd/ai-sdlc-loader/.github/workflows/checks.yml@v3
     with:
       base: main
-      runs_on: '["ubuntu-latest"]'
