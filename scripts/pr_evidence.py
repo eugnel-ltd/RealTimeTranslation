@@ -1,14 +1,12 @@
-"""Trusted API adapter for the unchanged, hash-pinned AI-SDLC parsers.
+"""Trusted API adapter for the unchanged, hash-pinned AI-SDLC helpers.
 
 Run from trusted main, never from a pull-request checkout on a persistent runner.
 """
-from contextlib import contextmanager
 import json
 import os
 from pathlib import Path
 import re
 import subprocess
-import tempfile
 
 ROOT = Path(__file__).resolve().parents[1]
 REPO = "eugnel-ltd/RealTimeTranslation"
@@ -20,7 +18,6 @@ CHECKS = ",".join((
     "checks / Cloudflare config stays inside the US$5 plan",
     "test",
 ))
-TRUSTED = {"OWNER", "MEMBER", "COLLABORATOR"}
 
 
 class Hold(Exception):
@@ -68,25 +65,6 @@ def number(value):
     return value
 
 
-@contextmanager
-def trusted_review(pr):
-    comments = api(f"repos/{REPO}/issues/{number(pr)}/comments?per_page=100", pages=True)
-    bodies = []
-    for comment in comments:
-        if not isinstance(comment, dict) or not isinstance(comment.get("body"), str) or not isinstance(comment.get("author_association"), str):
-            raise Failure("review comment lacks trusted GitHub API metadata")
-        if comment["author_association"] in TRUSTED:
-            if "\x1e" in comment["body"]:
-                raise Failure("review comment contains a record separator")
-            bodies.append(comment["body"] + "\x1e")
-    with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", prefix="rtt-trusted-review-") as handle:
-        handle.write("".join(bodies))
-        handle.flush()
-        env = dict(os.environ, REVIEW_ON_HEAD_COMMENTS=handle.name, REQUIRED_CHECKS=CHECKS,
-                   RELEASE_REQUIRED_CHECKS=CHECKS, REVIEW_JOB="checks / Independent APPROVE names the head")
-        yield env
-
-
 def helper(name, args, env):
     result = command(["sh", str(ROOT / ".ai-sdlc" / name), *args], env=env)
     if result.returncode == 1:
@@ -99,13 +77,13 @@ def helper(name, args, env):
 
 
 def check_pr(pr, head, expenditure):
-    with trusted_review(pr) as env:
-        env["EXPECT_EXPENDITURE"] = expenditure
-        helper("review_on_head.sh", [str(pr), sha(head), "--repo", REPO, "--auto-merge"], env)
-        helper("head_checks.sh", [REPO, str(pr), head], env)
+    env = dict(os.environ, REQUIRED_CHECKS=CHECKS, EXPECT_EXPENDITURE=expenditure,
+               REVIEW_JOB="checks / Independent APPROVE names the head")
+    helper("review_on_head.sh", [str(number(pr)), sha(head), "--repo", REPO, "--auto-merge"], env)
+    helper("head_checks.sh", [REPO, str(pr), head], env)
 
 
-def check_merge(commit):
+def check_merge(commit, proved=()):
     matches = api(f"repos/{REPO}/commits/{sha(commit)}/pulls")
     if not isinstance(matches, list):
         raise Failure("merged-PR response shape is invalid")
@@ -119,6 +97,28 @@ def check_merge(commit):
     if not isinstance(pr.get("head"), dict) or pr["head"].get("repo", {}).get("full_name") != REPO:
         raise Hold("merged PR does not have a same-repository head")
     sha(pr["head"].get("sha"))
-    with trusted_review(pr["number"]) as env:
-        helper("release_evidence.sh", [REPO, commit, "--base", "main"], env)
-    print(f"EVIDENCE OK {commit}: #{pr['number']} head {pr['head']['sha']}")
+    env = os.environ.copy()
+    env.pop("REQUIRED_CHECKS", None)
+    env.pop("RELEASE_REQUIRED_CHECKS", None)
+    result = command(["sh", str(ROOT / ".ai-sdlc/release_evidence.sh"), REPO, commit, "--base", "main"], env=env)
+    if result.returncode not in (0, 1):
+        raise Failure("adopted release evidence helper failed")
+    lines = result.stdout.strip().splitlines()
+    if not lines:
+        raise Failure("release evidence helper returned no evidence line")
+    evidence = lines[-1]
+    if result.returncode == 0:
+        print(evidence)
+        return
+    if proved:
+        remediation = command(["sh", str(ROOT / ".ai-sdlc/release_remediation.sh"),
+                               REPO, commit, *proved, "--base", "main"], env=env)
+        if remediation.returncode == 0:
+            lines = remediation.stdout.strip().splitlines()
+            if not lines:
+                raise Failure("release remediation helper returned no evidence line")
+            print(lines[-1])
+            return
+        if remediation.returncode != 1:
+            raise Failure("adopted release remediation helper failed")
+    raise Hold(evidence)

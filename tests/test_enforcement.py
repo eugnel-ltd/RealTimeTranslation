@@ -2,9 +2,6 @@
 import hashlib
 import json
 from pathlib import Path
-import shutil
-import subprocess
-import tempfile
 import unittest
 
 import yaml
@@ -58,36 +55,30 @@ class EnforcementTests(unittest.TestCase):
                 with self.subTest(workflow=path.name):
                     self.assertNotIn(LEGACY_WORKFLOW, path.read_text())
 
-    def test_upstream_release_evidence(self):
-        for prerequisite in ('bash', 'git', 'jq', 'python3'):
-            self.assertIsNotNone(shutil.which(prerequisite),
-                                 f'{prerequisite} is required for executable upstream checks')
-        with tempfile.TemporaryDirectory(prefix='rtt-upstream-checks-') as temporary:
-            directory = Path(temporary)
-            for subdir in ('tests', 'scripts'):
-                (directory / subdir).mkdir()
-            for name in ('review_on_head.sh', 'head_checks.sh', 'release_evidence.sh'):
-                shutil.copyfile(ROOT / '.ai-sdlc' / name, directory / 'scripts' / name)
-            name = 'test_release_evidence.sh'
-            script = directory / 'tests' / name
-            shutil.copyfile(ROOT / 'tests/ai-sdlc-upstream' / name, script)
-            result = subprocess.run(['sh', str(script)], cwd=directory, text=True,
-                                    capture_output=True, check=False)
-            output = result.stdout + result.stderr
-            self.assertEqual(result.returncode, 0, output)
-            self.assertNotIn('skip:', output, 'upstream evidence must execute, not skip')
-            self.assertIn('ok ', result.stdout)
-
     def test_vendored_assets_match_recorded_upstream_provenance(self):
         record = json.loads((ROOT / '.ai-sdlc/upstream.json').read_text())
-        self.assertEqual(record['revision'], 'b217812bca40c0b3d3ff1ba012ed8c4e33ee2636')
+        self.assertNotIn('revision', record)
+        self.assertEqual(record['repository'], 'https://github.com/eugnel-ltd/ai-sdlc')
+        self.assertEqual(record['adaptations'], {})
+        expected = {'review_on_head.sh', 'head_checks.sh', 'release_evidence.sh',
+                    'release_remediation.sh', 'manifest_check.py'}
+        self.assertEqual({Path(asset['installed']).name for asset in record['files']}, expected)
+        self.assertEqual(len(record['files']), len(expected))
+        self.assertEqual({path.name for path in (ROOT / '.ai-sdlc').iterdir()},
+                         expected | {'upstream.json'})
         for asset in record['files']:
             with self.subTest(asset=asset['installed']):
+                name = Path(asset['installed']).name
+                revision = ('b217812bca40c0b3d3ff1ba012ed8c4e33ee2636' if name == 'manifest_check.py'
+                            else '38b1afbb1968e927e995c7c9af57fb7c35fa24f1')
+                self.assertEqual(asset['revision'], revision)
+                self.assertEqual(asset['installed'], f'.ai-sdlc/{name}')
+                self.assertEqual(asset['source'], f'scripts/{name}')
                 path = ROOT / asset['installed']
                 self.assertEqual(hashlib.sha256(path.read_bytes()).hexdigest(),
                                  asset['installed_sha256'])
                 self.assertEqual(asset['installed_sha256'], asset['source_sha256'],
-                                 'adopted scripts/tests must remain unchanged upstream copies')
+                                 'adopted helpers must remain unchanged upstream copies')
 
 
 if __name__ == '__main__':

@@ -43,15 +43,15 @@ def preflight(commit, evidence_only=False):
     if not GREEN.search(ledger):
         raise Hold("enforcement ledger is not green")
     current = commit
-    count = 0
+    proved = []
     while GREEN.search(ledger_at(current)):
-        check_merge(current)
-        count += 1
+        check_merge(current, proved)
+        proved.append(current)
         parents = git("rev-list", "--parents", "-n", "1", current).split()
         if len(parents) < 2:
             raise Hold("ledger is green back to root; no transition is established")
         current = sha(parents[1])
-    print(f"WEB RELEASE EVIDENCE OK {commit}: {count} green-chain commits")
+    print(f"WEB RELEASE EVIDENCE OK {commit}: {len(proved)} green-chain commits")
     if not evidence_only:
         result = command([sys.executable, str(ROOT / ".ai-sdlc/manifest_check.py"), "product.yaml", "--publishing", "web"])
         print(result.stdout, end="")
@@ -59,7 +59,7 @@ def preflight(commit, evidence_only=False):
             raise Hold("publishing-web baseline is incomplete")
         if result.returncode:
             raise Failure("publishing-web baseline checker failed")
-    return count
+    return len(proved)
 
 
 def deployment():
