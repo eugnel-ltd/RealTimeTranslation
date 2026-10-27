@@ -38,13 +38,13 @@ afterEach(() => {
 });
 
 describe('trusted scheduled uptime workflow', () => {
-  it('permits only scheduled or manually dispatched default-branch runs on the existing self-hosted lane', () => {
+  it('permits only scheduled or manually dispatched default-branch runs on a GitHub-hosted runner', () => {
     const config = workflow();
     expect(Object.keys(config.on).sort()).toEqual(['schedule', 'workflow_dispatch']);
     expect(config.on.schedule).toEqual([{ cron: '7,37 * * * *' }]);
     expect(config.permissions).toEqual({ contents: 'read', issues: 'write' });
     expect(config.concurrency['cancel-in-progress']).toBe(false);
-    expect(config.jobs.uptime['runs-on']).toEqual(['self-hosted']);
+    expect(config.jobs.uptime['runs-on']).toEqual('ubuntu-latest');
     expect(config.jobs.uptime['timeout-minutes']).toBeLessThanOrEqual(5);
     const allowed = new Function('github', 'format', 'vars', `return (${config.jobs.uptime.if});`) as
       (github: object, format: (pattern: string, value: string) => string, vars: Record<string, string>) => boolean;
