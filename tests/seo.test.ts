@@ -63,7 +63,10 @@ describe('search metadata and crawl boundaries', () => {
       for (const entry of readdirSync(directory, { withFileTypes: true })) {
         const path = join(directory, entry.name);
         if (entry.isDirectory()) discover(path);
-        else if (entry.name.endsWith('.html') && !/name="robots" content="noindex/.test(read(path))) pages.push(path);
+        else if (entry.name.endsWith('.html')) {
+          const noindex = /<meta\b(?=[^>]*\bname\s*=\s*["']robots["'])(?=[^>]*\bcontent\s*=\s*["'][^"']*noindex[^"']*["'])[^>]*>/i.test(read(path));
+          if (!noindex) pages.push(path);
+        }
       }
     }
     discover(publicRoot);
