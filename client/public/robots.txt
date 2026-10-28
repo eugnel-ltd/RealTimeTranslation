@@ -1,0 +1,6 @@
+User-agent: *
+Allow: /
+Disallow: /api/
+Disallow: /_internal/
+
+Sitemap: https://rtt.eugnel.com/sitemap.xml

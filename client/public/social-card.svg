@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630" role="img" aria-labelledby="title description">
+  <title id="title">Real-Time Translation</title>
+  <desc id="description">Speech transcription and translation. Owner access only.</desc>
+  <rect width="1200" height="630" fill="#101b35"/>
+  <rect x="72" y="76" width="56" height="8" rx="4" fill="#a5b4fc"/>
+  <g fill="#ffffff" font-family="DejaVu Sans, sans-serif">
+    <text x="72" y="149" font-size="25" letter-spacing="3">EUGNEL</text>
+    <text x="72" y="274" font-size="72" font-weight="700">Real-Time</text>
+    <text x="72" y="359" font-size="72" font-weight="700">Translation</text>
+    <text x="76" y="434" font-size="31" fill="#d6def4">Speech transcription and translation</text>
+    <text x="76" y="541" font-size="24" fill="#a5b4fc">Owner access only</text>
+    <text x="1128" y="541" font-size="24" text-anchor="end" fill="#d6def4">rtt.eugnel.com</text>
+  </g>
+  <g fill="none" stroke="#a5b4fc" stroke-width="12" stroke-linecap="round" opacity=".8">
+    <path d="M886 228v72m34-113v154m34-88v23m34-119v214m34-160v106m34-62v18m34-82v146"/>
+  </g>
+</svg>
