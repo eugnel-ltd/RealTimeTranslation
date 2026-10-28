@@ -19,7 +19,7 @@ Routing table only. Each row names the document that governs an area. Rules live
 | Intent (issue) fields | `.github/ISSUE_TEMPLATE/intent.md` |
 | PR body | `.github/pull_request_template.md` |
 | Plans and specs | `docs/plans/`, `docs/specs/` |
-| Hooks and checks | `.claude/settings.json`; `.github/workflows/ai-sdlc-checks.yml`; `docs/code-standards.md` (local PR gates and cloud CI) and `docs/autonomy-ledger.md` (release enforcement status) |
+| Hooks and checks | `.claude/settings.json`; `.github/workflows/ai-sdlc-checks.yml` (public loader at v3, served from the signed bundle); `docs/code-standards.md` (local PR gates and cloud CI) and `docs/autonomy-ledger.md` (release enforcement status) |
 | Worker API, secrets, Cloudflare Access, deploy (`worker/`, `wrangler.jsonc`) | `DEPLOY.md` |
 | Web client (`client/`), shared logic (`shared/`) | `readme.md`, `client/README.md` |
 | Python desktop app (`translator_app.py`) | `readme.md` |

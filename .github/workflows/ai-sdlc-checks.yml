@@ -1,12 +1,16 @@
-# Local caller for the vendored AI-SDLC checks; upstream provenance is in .ai-sdlc/upstream.json.
-# pull_request_target and PR comments use the base/default branch definition. The implementation
-# checks out main, loads checker scripts from origin/main, and reads PR commits only as git data.
-# No application build/test or PR-provided executable runs on this self-hosted runner.
+# Thin caller for the AI-SDLC PR checks (ai-sdlc templates/workflows/ai-sdlc-checks.yml, ai-sdlc #731).
+# The checks run from the public loader at v3, which serves every gate from the signed gate
+# bundle; no gate reads this repo's .ai-sdlc/. They read the PR as data and never execute its code,
+# which is why pull_request_target is safe here and why a PR cannot weaken its own gate.
+# RTT is public: the loader runs each job on GitHub-hosted ubuntu-24.04 by itself, and the comment
+# filter below runs on ubuntu-latest, so no job here reaches a self-hosted runner (owner, 23 Oct 2026:
+# "RTT cloud only"). Check-run names stay `checks / <job name>` for scripts/pr_evidence.py.
 name: AI-SDLC checks
 
 on:
+  # No ready_for_review: checks.yml does nothing different for drafts (ai-sdlc #610).
   pull_request_target:
-    types: [opened, synchronize, reopened, ready_for_review]
+    types: [opened, synchronize, reopened]
   issue_comment:
     types: [created, edited, deleted]
 
@@ -15,10 +19,61 @@ permissions:
   pull-requests: read
   issues: read
   statuses: write
+  # The loader's jobs get an OIDC token for the gate broker (ai-sdlc #731).
+  id-token: write
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.event.issue.number || github.run_id }}-${{ github.event_name == 'issue_comment' && github.event.issue.pull_request && (contains(github.event.comment.body, 'VERDICT:') || contains(github.event.comment.body, '**Verdict:**') || contains(github.event.comment.body, 'Reviewed head:') || contains(github.event.changes.body.from, 'VERDICT:') || contains(github.event.changes.body.from, '**Verdict:**') || contains(github.event.changes.body.from, 'Reviewed head:')) && (github.event.comment.author_association == 'OWNER' || github.event.comment.author_association == 'MEMBER' || github.event.comment.author_association == 'COLLABORATOR' || ((github.event.comment.author_association == 'CONTRIBUTOR' || github.event.comment.author_association == 'NONE') && !endsWith(github.event.comment.user.login, '[bot]'))) && 'review' || 'other' }}
+  cancel-in-progress: true
 
 jobs:
+  # Ordinary comments queue nothing; only review-marker comments start the checks.
+  comment-filter:
+    if: >-
+      github.event_name == 'issue_comment' && github.event.issue.pull_request &&
+      (contains(github.event.comment.body, 'VERDICT:') ||
+      contains(github.event.comment.body, '**Verdict:**') ||
+      contains(github.event.comment.body, 'Reviewed head:') ||
+      contains(github.event.changes.body.from, 'VERDICT:') ||
+      contains(github.event.changes.body.from, '**Verdict:**') ||
+      contains(github.event.changes.body.from, 'Reviewed head:')) &&
+      (github.event.comment.author_association == 'OWNER' ||
+      github.event.comment.author_association == 'MEMBER' ||
+      github.event.comment.author_association == 'COLLABORATOR' ||
+      ((github.event.comment.author_association == 'CONTRIBUTOR' ||
+      github.event.comment.author_association == 'NONE') &&
+      !endsWith(github.event.comment.user.login, '[bot]')))
+    runs-on: ubuntu-latest
+    permissions: {}
+    timeout-minutes: 2
+    outputs:
+      run: ${{ steps.f.outputs.run }}
+    steps:
+      - id: f
+        env:
+          IS_PR: ${{ github.event.issue.pull_request != null }}
+          AUTHOR: ${{ github.event.comment.user.login }}
+          ASSOC: ${{ github.event.comment.author_association }}
+          BODY: ${{ github.event.comment.body }}
+          FROM: ${{ github.event.changes.body.from }}
+        run: |
+          run=false
+          case "$ASSOC" in
+            OWNER|MEMBER|COLLABORATOR) counted=true ;;
+            CONTRIBUTOR|NONE) case "$AUTHOR" in *\[bot\]) counted=false ;; *) counted=true ;; esac ;;
+            *) counted=false ;;
+          esac
+          # Here-string, not a pipe: under bash -eo pipefail a large body makes printf die of SIGPIPE.
+          if [ "$IS_PR" = true ] && [ "$counted" = true ] && grep -qiE 'VERDICT:|\*\*Verdict:\*\*|Reviewed head:' <<<"$BODY"$'\n'"$FROM"; then run=true; fi
+          echo "run=$run" >> "$GITHUB_OUTPUT"
+
   checks:
-    uses: ./.github/workflows/ai-sdlc-checks-impl.yml
+    needs: comment-filter
+    if: >-
+      ${{ !cancelled() && ((github.event_name == 'pull_request_target' &&
+      needs.comment-filter.result == 'skipped') || (github.event_name == 'issue_comment' &&
+      needs.comment-filter.result == 'success' && needs.comment-filter.outputs.run == 'true')) }}
+    uses: eugnel-ltd/ai-sdlc-loader/.github/workflows/checks.yml@v3
     with:
       base: main
-      runs_on: '["self-hosted", "ai-sdlc"]'
+      runs_on: '["ubuntu-latest"]'

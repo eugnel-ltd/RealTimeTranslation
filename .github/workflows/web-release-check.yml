@@ -12,6 +12,8 @@ permissions:
   pull-requests: read
   issues: read
   checks: read
+  actions: read
+  statuses: read
 
 concurrency:
   group: rtt-web-release-evidence
@@ -20,7 +22,7 @@ concurrency:
 jobs:
   evidence:
     if: github.ref == 'refs/heads/main'
-    runs-on: [self-hosted, ai-sdlc]
+    runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
