@@ -54,4 +54,4 @@ Cloudflare sent-message previews can retain the full message for about seven day
 
 We plan minimal Sentry reports for server failures. Reporting needs a configured project before use. It sends fixed failure categories, route/status tags and release information, without original requests or errors. The project and region still need live verification. There is no client analytics or advertising identifier in this reporting code.
 
-The provider notices linked below describe their processing terms and international safeguards. Contact {{company.privacy_email}} for the applicable arrangements or to exercise a right. The privacy page gives the current ICO application status.
+The provider notices linked below describe their processing terms and international safeguards. Contact {{company.privacy_email}} for the applicable arrangements or to exercise a right. The privacy page states our ICO registration ({{company.ico_registration}}).
