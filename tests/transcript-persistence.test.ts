@@ -302,8 +302,12 @@ it('opted-in Clear Transcripts flushes pending finals and keeps durable history'
   expect(history()[0].transcriptions[0].originalText).toBe('Flush on clear.');
 });
 
-it('provides working legal page destinations from the application', () => {
-  for (const href of ['/legal/privacy/', '/legal/terms/', '/legal/refunds/', '/legal/data-use/']) {
-    expect(find((node) => node.type === 'a' && node.props.href === href), `Missing app link ${href}`).toBeDefined();
-  }
+it('provides a minimal app footer linking to the Company information page and its policy destinations', () => {
+  const footerComponent = find((node) => node.type?.name === 'LegalFooter');
+  expect(footerComponent, 'Missing minimal app footer linking to Company information').toBeDefined();
+  const footer = footerComponent.type(footerComponent.props);
+  expect(footer.type).toBe('footer');
+  const companyLink = find((node) => node.type === 'a' && node.props.href === '/company/', footer);
+  expect(companyLink, 'Missing app link to Company information page and its policy destinations').toBeDefined();
+  expect(companyLink.props.children).toBe('Company information');
 });

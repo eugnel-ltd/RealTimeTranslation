@@ -50,6 +50,10 @@ export function refreshPolicyMarkdown(route, markdown, company) {
 
   const icoLine = `We are registered with the Information Commission (ICO), registration number ${registration}.`;
   if (registration && !text.includes('Information Commission (ICO), registration number')) {
+    text = text.replace(
+      /Our registration with the Information Commissioner's Office is [^.\n]+\./g,
+      icoLine,
+    );
     text = text.replace(/Registered with ICO[^.\n]*\./gi, icoLine);
     text = text.replace(
       /We have applied to the Information Commissioner[^.]*\./gi,
@@ -59,15 +63,17 @@ export function refreshPolicyMarkdown(route, markdown, company) {
     text = text.replace(/application[^.\n]*pending[^.\n]*C2062045[^.\n]*\./gi, icoLine);
   }
 
-  const identityPattern = new RegExp(
-    `${escapeRegExp(name)}[^\\n]*(${escapeRegExp(office)}|${escapeRegExp(String(company.number))})[^\\n]*`,
-    'gi',
-  );
-  text = text.replace(identityPattern, name);
-  text = text.replace(new RegExp(escapeRegExp(office), 'g'), '');
-  text = text.replace(new RegExp(String(company.number), 'g'), '');
-  text = text.replace(/, registered in England & Wales, company no\.?\s*/gi, '');
-  text = text.replace(/EUGNEL LTD, registered in England & Wales[^.\n]*/gi, name);
+  // Remove only the pinned templates' identification clauses. Both paragraphs
+  // also contain policy statements that must survive this presentation change.
+  const number = escapeRegExp(String(company.number));
+  text = text.replace(new RegExp(
+    ` We are registered in ${escapeRegExp(String(company.country))} with company number ${number}, at ${escapeRegExp(office)}\\.`,
+    'g',
+  ), '');
+  text = text.replace(new RegExp(
+    `, company number ${number}, ${escapeRegExp(office)}(?= \\("we"\\))`,
+    'g',
+  ), '');
 
   const complaintsBlock = `${COMPLAINTS_HEADING}
 
