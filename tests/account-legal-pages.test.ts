@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, expect, it } from 'vitest';
@@ -7,20 +7,42 @@ import { afterAll, beforeAll, expect, it } from 'vitest';
 const directory = mkdtempSync(join(tmpdir(), 'rtt-account-notices-'));
 const pages: Record<string, string> = {};
 beforeAll(() => {
-  execFileSync(process.execPath, ['scripts/generate-legal.mjs', '--out', directory]);
+  execFileSync(process.execPath, [
+    'scripts/generate-legal.mjs',
+    '--out', join(directory, 'legal'),
+    '--company-out', join(directory, 'company'),
+  ], { stdio: ['ignore', 'pipe', 'pipe'] });
   for (const route of ['privacy', 'terms', 'refunds', 'data-use']) {
-    pages[route] = readFileSync(join(directory, route, 'index.html'), 'utf8');
+    pages[route] = readFileSync(join(directory, 'legal', route, 'index.html'), 'utf8');
   }
 });
 afterAll(() => rmSync(directory, { recursive: true, force: true }));
 
-it('keeps the actual private free service and pending ICO facts while describing conditional accounts', () => {
+it('links the built Company page Legal navigation to all four policies', () => {
+  const company = readFileSync(join(directory, 'company', 'index.html'), 'utf8');
+  const legalNav = company.match(/<nav aria-label="Legal">([\s\S]*?)<\/nav>/)?.[1] ?? '';
+  for (const route of ['privacy', 'terms', 'refunds', 'data-use']) {
+    expect(legalNav, `Missing Company navigation link to /legal/${route}/`).toContain(`href="/legal/${route}/"`);
+  }
+});
+
+it('keeps the actual private free service and registered ICO facts while describing conditional accounts', () => {
+  expect(pages.privacy, 'Missing minimal footer').toContain('© EUGNEL LTD');
   expect(pages['data-use']).toMatch(/private tool for the authorised adult owner/);
   expect(pages['data-use']).toContain('Public signup is unavailable');
   expect(pages.refunds).toMatch(/free/i);
-  expect(pages.privacy).toMatch(/application.*pending/i);
-  expect(pages.privacy).toContain('C2062045');
-  expect(pages.privacy).not.toMatch(/registration[^<]*ZB\d|19 October 2026/);
+  expect(pages.privacy).toContain('ZC277339');
+  expect(pages.privacy, 'Minimal footer must link to Company information').toContain('href="/company/">Company information</a>');
+  const privacyMain = pages.privacy.match(/<main>([\s\S]*)<\/main>/)?.[1] ?? '';
+  expect(privacyMain, 'Privacy policy body must have no company number').not.toContain('17505169');
+  expect(privacyMain, 'Privacy policy body must have no address').not.toContain('122 New Road');
+  expect(pages.privacy).toContain('Information Commission (ICO)');
+  expect(pages.privacy).not.toMatch(/application.*pending|C2062045|Berkshire/);
+  const companyPath = join(directory, 'company', 'index.html');
+  expect(existsSync(companyPath), 'Missing Company information page').toBe(true);
+  const company = readFileSync(companyPath, 'utf8');
+  expect(company).toContain('17505169');
+  expect(company).toContain('122 New Road, Ascot, SL5 8QH');
   expect(pages['data-use']).toMatch(/Account sign-in when available/);
   expect(pages['data-use']).toMatch(/account features are disabled in the current private service/i);
 });

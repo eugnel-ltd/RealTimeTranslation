@@ -10,7 +10,7 @@ The original speech/storage review used RTT commit `557988c0c490c9ae191eba642f11
 
 Company facts come from [eugnel-hq/company/company.yaml](https://github.com/eugnel-ltd/eugnel-hq/blob/3941a3527ef76a808587a3df85148b9a2b6724dd/company/company.yaml). Read the current canonical file for each draft. Do not create a second company record here.
 
-On 18 October, that record gives `hello@eugnel.com` as the privacy contact. ICO registration is null and pending, with application reference C2062045. The expected date, 19 October, does not establish registration.
+On 18 October, that record gives `hello@eugnel.com` as the privacy contact. The canonical company snapshot now records ICO registration **ZC277339** (registered). Application reference C2062045 remains separate provenance in the HQ record; an expected date alone never establishes registration.
 
 ## Web data flows
 
@@ -93,7 +93,7 @@ The desktop app does not implement web localStorage history, Google answers or T
 
 ## Publication and live evidence checks
 
-1. Keep the canonical ICO number null and render the explicit pending application until actual issuance is verified. Pending rendering is supported; an expected date alone never changes status.
+1. Keep the canonical company snapshot aligned with HQ; render registered ICO **ZC277339** when present. Pending rendering is supported when registration is absent; an expected date alone never changes status.
 2. Actual Google project billing eligibility. [Current provider evidence](provider-evidence.md) records the published UK Paid Services requirement and data-use terms; these do not prove the live project setting.
 3. Microsoft resource configuration against the scoped public no-trace statements in [provider evidence](provider-evidence.md). Configured `uksouth` does not establish a complete location for every service and metadata item.
 4. Any custom TypeSafe arrangement that differs from its published US hosting, purpose-based retention and UK transfer terms. The earlier documentary gaps are resolved in [provider evidence](provider-evidence.md).

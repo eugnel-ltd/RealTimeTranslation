@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import React from '../client/node_modules/react';
 import App from '../client/src/App';
+import AccountBootstrap from '../client/src/components/AccountBootstrap';
 import History from '../client/src/components/History';
 import { SettingsService } from '../client/src/services/settings';
 
@@ -302,8 +303,22 @@ it('opted-in Clear Transcripts flushes pending finals and keeps durable history'
   expect(history()[0].transcriptions[0].originalText).toBe('Flush on clear.');
 });
 
-it('provides working legal page destinations from the application', () => {
-  for (const href of ['/legal/privacy/', '/legal/terms/', '/legal/refunds/', '/legal/data-use/']) {
-    expect(find((node) => node.type === 'a' && node.props.href === href), `Missing app link ${href}`).toBeDefined();
+it.each(['app', 'AccountBootstrap'])('provides a minimal %s footer linking to /company/', (name) => {
+  if (name === 'AccountBootstrap') {
+    vi.stubGlobal('window', {
+      location: { origin: 'https://rtt.example.test', href: 'https://rtt.example.test/' },
+      addEventListener() {}, removeEventListener() {}, history: { replaceState() {} },
+    });
+    vi.stubGlobal('document', { addEventListener() {}, removeEventListener() {} });
+    vi.stubGlobal('BroadcastChannel', undefined);
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(null, { status: 503 })));
+    slots = []; component = AccountBootstrap; render();
   }
+  const footerComponent = find((node) => node.type?.name === 'LegalFooter');
+  expect(footerComponent, `Missing minimal ${name} footer linking to /company/`).toBeDefined();
+  const footer = footerComponent.type(footerComponent.props);
+  expect(footer.type).toBe('footer');
+  const companyLink = find((node) => node.type === 'a' && node.props.href === '/company/', footer);
+  expect(companyLink, `Missing ${name} footer link to /company/`).toBeDefined();
+  expect(companyLink.props.children).toBe('Company information');
 });

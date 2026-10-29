@@ -1,7 +1,7 @@
 {
   "repository": "eugnel-ltd/eugnel-hq",
-  "commit": "3941a3527ef76a808587a3df85148b9a2b6724dd",
+  "commit": "48e48ee8cdf45032fa5b6647839b1d4af0412008",
   "path": "company/company.yaml",
-  "sha256": "01ccd85f47e82c99366eddfbb5b4a471b8da4a04015453f57256ea04b8d8c186",
-  "note": "Generated copy for an offline build; canonical authority is the source repository, not this snapshot."
+  "sha256": "2f2359a2e498c95700bf33fbddf583bae8fb92d6814bd2004eb2a009207bfc1c",
+  "note": "Generated copy for an offline build; canonical authority is the source repository, not this snapshot. Bytes match eugnel-hq company/company.yaml at commit 48e48ee8cdf45032fa5b6647839b1d4af0412008 (PR #81, merged 19 Oct 2026)."
 }
