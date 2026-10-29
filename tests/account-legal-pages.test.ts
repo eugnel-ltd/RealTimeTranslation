@@ -18,6 +18,14 @@ beforeAll(() => {
 });
 afterAll(() => rmSync(directory, { recursive: true, force: true }));
 
+it('links the built Company page Legal navigation to all four policies', () => {
+  const company = readFileSync(join(directory, 'company', 'index.html'), 'utf8');
+  const legalNav = company.match(/<nav aria-label="Legal">([\s\S]*?)<\/nav>/)?.[1] ?? '';
+  for (const route of ['privacy', 'terms', 'refunds', 'data-use']) {
+    expect(legalNav, `Missing Company navigation link to /legal/${route}/`).toContain(`href="/legal/${route}/"`);
+  }
+});
+
 it('keeps the actual private free service and registered ICO facts while describing conditional accounts', () => {
   expect(pages.privacy, 'Missing minimal footer').toContain('© EUGNEL LTD');
   expect(pages['data-use']).toMatch(/private tool for the authorised adult owner/);
