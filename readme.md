@@ -144,6 +144,14 @@ npm run build         # production client build and provider-key pattern scan
 
 The browser answer client accepts LF/CRLF SSE and final unterminated events. Cancelling an answer or translation propagates to its provider request. Transcript replay with `--answer` exits nonzero on an SSE error or a stream that ends before `done`.
 
+## Search metadata and public information
+
+The app at `/` and its SPA fallback retain `noindex, nofollow`. `/about/` is a static product information page with its own title, description, canonical URL, social cards and visible WebApplication description. The sitemap lists only `/about/`; the existing noindex legal documents stay out while legal PR #62 owns their changes. `robots.txt` allows page crawling so crawlers can read noindex, and excludes API and internal paths. Robots directives do not replace authentication.
+
+Cloudflare Access currently protects the entire production host. These files do not make any route public. An operator must explicitly allow public information and crawler assets before search engines or social preview services can fetch them, while keeping the app and API protected. See the [issue #63 audit and remaining operator steps](docs/aso-seo/audit-63.md).
+
+The social image is generated from `client/public/social-card.svg`. Regenerate its 1200×630 PNG with `npm run seo:card` (Python 3, system librsvg/Cairo and DejaVu Sans fonts; no network requests or Python packages). The generated PNG is checked in so normal builds need no image tooling. Edit the SVG and regenerate rather than changing the PNG directly.
+
 ## Project Structure
 
 ```

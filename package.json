@@ -16,7 +16,8 @@
     "release": "python3 -B scripts/web-release.py",
     "typecheck": "tsc --noEmit && tsc -p tests/tsconfig.json && npm --prefix client run typecheck",
     "lint": "npm --prefix client run lint",
-    "legal:build": "node scripts/generate-legal.mjs"
+    "legal:build": "node scripts/generate-legal.mjs",
+    "seo:card": "python3 scripts/render-social-card.py"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "latest",
